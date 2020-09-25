@@ -1,0 +1,14 @@
+# Ignore pycache directories
+**/__pycache__
+
+# Ignore pyc files
+*.pyc
+
+# Ignore pip package files
+**/*.egg-info
+
+# Ignore swp files
+*.swp
+
+# Ignore specific game telemetry directories
+**/game_telemetry/**

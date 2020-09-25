@@ -1,0 +1,19 @@
+open two powershell scripts
+
+navigate to "C:\Dev\Cohort16-Private\GameLab\Project Everglades\game-logic-vUCF_19-20"
+
+on the left start the server with 
+python HumanvsAI_test_battle.py
+
+on the right navigate down into "TemplateClientServer"
+start the client with  
+python .\client.py
+
+(old)on the client, enter the command (spacing matters) 
+actions: 1,1,1,1,1,1,1 | 2,2,2,2,2,2,2
+
+now 
+group 1 node 1 group 2 node 2 group 3 node 3 group 4 node 1 group 5 node 2 group 6 node 3 group 7 node 7
+
+the server should increment the turn
+repeat until sanity loss or game end
