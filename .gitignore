@@ -12,3 +12,4 @@
 
 # Ignore specific game telemetry directories
 **/game_telemetry/**
+**/Telemetry/**
