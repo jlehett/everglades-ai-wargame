@@ -79,7 +79,7 @@ class human_actions:
 
         self.actions = "" # output
 
-        with open('/everglades/config/' + map_name) as fid:
+        with open('./config/' + map_name) as fid:
             self.map_dat = json.load(fid)
 
         self.nodes_array = []

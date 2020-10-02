@@ -70,11 +70,12 @@ done = 0
 while not done:
     if debug:
         env.game.debug_state()
+    
+    env.render()
 
     for pid in players:
         actions[pid] = players[pid].get_action( observations[pid] )
 
     observations, reward, done, info = env.step(actions)
-    pdb.set_trace()
 
 print(reward)
