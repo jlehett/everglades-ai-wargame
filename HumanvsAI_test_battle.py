@@ -99,6 +99,8 @@ while not done:
     if debug:
         env.game.debug_state()
 
+    env.render()
+
     for pid in players:
         if (pid != 0): ## the human player is player 0
             actions[pid] = players[pid].get_action( observations[pid] )

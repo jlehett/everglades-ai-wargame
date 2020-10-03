@@ -32,7 +32,7 @@ setup_file = config_dir + 'GameSetup.json'
 unit_file = config_dir + 'UnitDefinitions.json'
 output_dir = './game_telemetry/'
 
-debug = 1
+debug = False
 
 ## Specific Imports
 agent0_name, agent0_extension = os.path.splitext(agent0_file)

@@ -2,8 +2,8 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 from gym.spaces import Tuple, Discrete, Box
-
 import everglades_server.server as server
+from gym_everglades.envs.everglades_renderer import EvergladesRenderer
 
 import numpy as np
 import pdb
@@ -25,7 +25,7 @@ class EvergladesEnv(gym.Env):
         # Define the state space
         self.observation_space = self._build_observation_space()
 
-        return
+        self.viewer = None
 
     def step(self, actions):
 
@@ -40,9 +40,7 @@ class EvergladesEnv(gym.Env):
                 reward[0] = 1 if scores[0] > scores[1] else -1
                 reward[1] = reward[0] * -1 # flip the sign
             # else reward is 0 for a tie
-            print(scores)
         # end status done check
-        print(status)
 
         # return state, reward, done, info
         return observations, reward, done, {}
@@ -84,13 +82,15 @@ class EvergladesEnv(gym.Env):
         observations = self._build_observations()
         #pdb.set_trace()
 
+        self.renderer = EvergladesRenderer(self.game)
+
         return observations
 
     def render(self, mode='human'):
-        pass
+        self.renderer.render(mode)
 
     def close(self):
-        pass
+        self.renderer.close()
 
     def _build_observation_space(self):
         group_low = np.array([1, 0, 0, 0, 0])  # node loc, class, avg health, in transit, num units rem
