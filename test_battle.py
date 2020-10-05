@@ -78,4 +78,5 @@ while not done:
 
     observations, reward, done, info = env.step(actions)
 
+env.close()
 print(reward)
