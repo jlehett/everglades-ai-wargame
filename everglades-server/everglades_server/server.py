@@ -39,12 +39,10 @@ class EvergladesGame:
             pass
 
         # Check output directory existance. Create if necessary
-        if not os.path.isdir(self.output_dir):
+        if self.output_dir and not os.path.isdir(self.output_dir):
             oldmask = os.umask(000)
             os.mkdir(self.output_dir,mode=0o777)
             os.umask(oldmask)
-        assert( os.path.isdir(self.output_dir) ), 'Output directory does not exist \
-                and could not be created'
 
 
         # Initialize output arrays, to be written to file at game completion
@@ -813,12 +811,13 @@ class EvergladesGame:
         # Output telemetry files
         date = datetime.datetime.today()
         date_frmt = date.strftime('%Y.%m.%d-%H.%M.%S')
-        self.dat_dir = self.output_dir + '/' + self.evgMap.name + '_' + date_frmt
+        if self.output_dir:
+            self.dat_dir = self.output_dir + '/' + self.evgMap.name + '_' + date_frmt
 
-        oldmask = os.umask(000)
-        os.mkdir(self.dat_dir,mode=0o777)
-        os.umask(oldmask)
-        assert( os.path.isdir(self.dat_dir) ), 'Could not create telemetry output directory'
+            oldmask = os.umask(000)
+            os.mkdir(self.dat_dir,mode=0o777)
+            os.umask(oldmask)
+            assert( os.path.isdir(self.dat_dir) ), 'Could not create telemetry output directory'
 
         self.output = {}
         hdr = '0,player1,player2,status,focus'
@@ -1000,21 +999,22 @@ class EvergladesGame:
 
         for key in self.output.keys():
             #pdb.set_trace()
-            key_dir = self.dat_dir + '/' + str(key)
-            oldmask = os.umask(000)
-            try:
-                os.mkdir(key_dir,mode=0o777)
-            except OSError:
-                pass
-                # do nothign file exists
+            if self.output_dir:
+                key_dir = self.dat_dir + '/' + str(key)
+                oldmask = os.umask(000)
+                try:
+                    os.mkdir(key_dir,mode=0o777)
+                except OSError:
+                    pass
+                    # do nothign file exists
 
-            os.umask(oldmask)
-            assert( os.path.isdir(key_dir) ), 'Could not create telemetry {} output directory'.format(key)
+                os.umask(oldmask)
+                assert( os.path.isdir(key_dir) ), 'Could not create telemetry {} output directory'.format(key)
 
-            key_file = key_dir + '/' + 'Telem_' + key
-            with open(key_file, 'w') as fid:
-                writer = csv.writer(fid, delimiter='\n')
-                writer.writerow(self.output[key])
+                key_file = key_dir + '/' + 'Telem_' + key
+                with open(key_file, 'w') as fid:
+                    writer = csv.writer(fid, delimiter='\n')
+                    writer.writerow(self.output[key])
 
         self.SendFilesReadyMsg(sock);
 
