@@ -64,10 +64,10 @@ players[0] = agent0_class(
     env=env,
     map_name=map_name,
     h=100,
-    lr=1e-8,
-    epsilon=0.3,
-    epsilon_decay=0.9,
-    discount=0.99,
+    lr=10.0,
+    epsilon=0.0,
+    epsilon_decay=0.95,
+    discount=0.0,
 )
 names[0] = agent0_class.__name__
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
@@ -122,6 +122,9 @@ for game_num in range(1, num_games+1):
 
         # Reset the previous states
         previous_observations = next_observations
+
+    # Close the environment rendering window
+    env.close()
 
     # Handle end-of-episode logic
     players[0].endOfEpisode()
