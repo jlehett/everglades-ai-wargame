@@ -16,8 +16,9 @@ POSSIBLE_ACTIONS = (NUM_UNIT_GROUPS, NUM_NODES)
 GAME_LOST_REWARD_SHAPING_TOGGLE = True
 
 # Reward shaping constants
-GAME_LOST_REWARD_SHAPING = -1
-GAME_WON_REWARD_SHAPING = 1
+GAME_LOST_REWARD_SHAPING = -100
+GAME_WON_REWARD_SHAPING = 100
+TERRITORY_CONTROL_REWARD_SHAPING_MODIFIER = 1000
 
 import torch
 import random
@@ -45,9 +46,9 @@ class SimpleDQNAgent:
         self.criterion = torch.nn.MSELoss()
         self.model = torch.nn.Sequential(
             torch.nn.Linear(OBSERVATION_DIM, h),
-            torch.nn.ReLU(),
+            torch.nn.Sigmoid(),
             torch.nn.Linear(h, h),
-            torch.nn.ReLU(),
+            torch.nn.Sigmoid(),
             torch.nn.Linear(h, POSSIBLE_ACTIONS[0] * POSSIBLE_ACTIONS[1])
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr)
@@ -156,6 +157,11 @@ class SimpleDQNAgent:
         if len(next_state) == 0:
             if reward != 1 and GAME_LOST_REWARD_SHAPING_TOGGLE:
                 total_reward += GAME_LOST_REWARD_SHAPING
+        # Add reward shaping for the territories controlled
+        if len(next_state) != 0:
+            territory_control_info = next_state[3:45:4] / 100.0
+            avg_territory_control = np.average(territory_control_info)
+            total_reward += avg_territory_control * TERRITORY_CONTROL_REWARD_SHAPING_MODIFIER
         # Return the final reward
         return total_reward
             

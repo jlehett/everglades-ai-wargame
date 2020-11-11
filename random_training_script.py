@@ -36,7 +36,7 @@ def plotAgentPerformance(win_rate, num_games, save=False):
 # Agent files must include a class of the same name with a 'get_action' function
 # Do not include './' in file path
 training_agent_file = 'agents/' + sys.argv[1]
-random_agent_file = 'agents/random_actions_delay'
+random_agent_file = 'agents/random_actions'
 
 map_name = "DemoMap.json"
     
@@ -63,11 +63,11 @@ names = {}
 players[0] = agent0_class(
     env=env,
     map_name=map_name,
-    h=100,
-    lr=10.0,
+    h=20,
+    lr=1.0,
     epsilon=0.0,
     epsilon_decay=0.95,
-    discount=0.0,
+    discount=0.95,
 )
 names[0] = agent0_class.__name__
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
