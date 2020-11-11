@@ -26,13 +26,13 @@ else:
 
 map_name = "DemoMap.json"
     
-config_dir = './config/'  
+config_dir = 'D:\\Senior Design\\everglades-ai-wargame\\config\\'  
 map_file = config_dir + map_name
 setup_file = config_dir + 'GameSetup.json'
 unit_file = config_dir + 'UnitDefinitions.json'
 output_dir = './game_telemetry/'
 
-debug = 1
+debug = False
 
 ## Specific Imports
 agent0_name, agent0_extension = os.path.splitext(agent0_file)
@@ -70,11 +70,13 @@ done = 0
 while not done:
     if debug:
         env.game.debug_state()
+    
+    env.render()
 
     for pid in players:
         actions[pid] = players[pid].get_action( observations[pid] )
 
     observations, reward, done, info = env.step(actions)
-    pdb.set_trace()
 
+env.close()
 print(reward)

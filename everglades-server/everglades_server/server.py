@@ -806,11 +806,11 @@ class EvergladesGame:
                         node.controlState = node.controlPoints * pxer
                         node.controlledBy = pid
                     if node.controlledBy != -1 and neutralize:
-                        print('!!!!!!Neutralize!!!!!!!!')
-                        print(node.controlledBy)
+                        #print('!!!!!!Neutralize!!!!!!!!')
+                        #print(node.controlledBy)
                         node.controlledBy = -1
-                        print(node.controlledBy)
-                        print()
+                        #print(node.controlledBy)
+                        #print()
 
 
     def output_init(self):
