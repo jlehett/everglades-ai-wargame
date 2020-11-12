@@ -30,8 +30,8 @@ class DQNAgent():
         self.n_observations = observation_space.shape
         self.seed = 1
 
-        self.epsilon = 1.0
-        self.epsilon_decay = 0.99
+        self.epsilon = 0.3
+        self.epsilon_decay = 0.9
 
         with open('./config/' + map_name) as fid:
             self.map_dat = json.load(fid)
@@ -61,21 +61,24 @@ class DQNAgent():
         return action
 
     def get_greedy_action(self, obs):
+        action = np.zeros(self.shape)
         with torch.no_grad():
             action_hold = self.policy_net(obs)
             action_hold = torch.reshape(action_hold, (12, 11)).numpy()
-            best_values_per_group = np.zeros(12)
-            best_actions_per_group = np.zeros(12)
-            for num, unit_group_q_values in enumerate(action_hold):
-                best_values_per_group[num] = np.amax(unit_group_q_values)
-                best_actions_per_group[num] = np.argmax(unit_group_q_values)
-            
-            top_n = np.argpartition(best_values_per_group, -7)[-7:]
-            actions = np.array([
-                [top_n_index, best_actions_per_group[top_n_index]+1] for top_n_index in top_n
-            ])
-
-            return actions
+            action_units = np.zeros(7)
+            action_nodes = np.zeros(7)
+            action_qs = np.zeros(7)
+            for i in range(12):
+                for j in range(11):
+                    for k in range(7):
+                        if action_hold[i,j] > action_qs[k]:
+                            action_qs[k] = action_hold[i,j]
+                            action_units[k] = i
+                            action_units[k] = j
+                            break
+            action[:, 0] = action_units
+            action[:, 1] =  action_nodes
+        return action
 
     def get_action(self, obs):
         sample = random.random()

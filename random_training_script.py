@@ -69,7 +69,7 @@ names[1] = agent1_class.__name__
 
 # Training Params
 num_games = 10000
-display_game_after = 5000
+display_game_after = 50
 
 agent_0_wins = 0
 agent_0_win_rates = []
