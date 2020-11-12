@@ -3,6 +3,7 @@ import numpy as np
 import random
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 OBSERVATION_DIM = 105
 NUM_UNIT_GROUPS = 12
@@ -13,12 +14,13 @@ MAX_NUM_CONNECTIONS = 6
 POSSIBLE_ACTIONS = (NUM_UNIT_GROUPS, NUM_NODES)
 
 # Reward shaping toggles
-GAME_LOST_REWARD_SHAPING_TOGGLE = True
+GAME_LOST_REWARD_SHAPING_TOGGLE = False
+TERRITORY_CONTROL_REWARD_SHAPING_TOGGLE = False
 
 # Reward shaping constants
-GAME_LOST_REWARD_SHAPING = -100
-GAME_WON_REWARD_SHAPING = 100
-TERRITORY_CONTROL_REWARD_SHAPING_MODIFIER = 1000
+GAME_LOST_REWARD_SHAPING = -1
+GAME_WON_REWARD_SHAPING = 1
+TERRITORY_CONTROL_REWARD_SHAPING_MODIFIER = 1
 
 import torch
 import random
@@ -29,7 +31,6 @@ class SimpleDQNAgent:
         self,
         env,
         map_name,
-        h=50,
         lr=1e-12,
         epsilon=1.0,
         epsilon_decay=0.99,
@@ -44,14 +45,28 @@ class SimpleDQNAgent:
         self.discount = discount
 
         self.criterion = torch.nn.MSELoss()
-        self.model = torch.nn.Sequential(
-            torch.nn.Linear(OBSERVATION_DIM, h),
-            torch.nn.Sigmoid(),
-            torch.nn.Linear(h, h),
-            torch.nn.Sigmoid(),
-            torch.nn.Linear(h, POSSIBLE_ACTIONS[0] * POSSIBLE_ACTIONS[1])
+        self.policy_model = torch.nn.Sequential(
+            torch.nn.Linear(OBSERVATION_DIM, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 132),
+            torch.nn.ReLU(),
+            torch.nn.Linear(132, POSSIBLE_ACTIONS[0] * POSSIBLE_ACTIONS[1])
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr)
+        self.optimizer = torch.optim.RMSprop(self.policy_model.parameters())
+
+        self.target_model = torch.nn.Sequential(
+            torch.nn.Linear(OBSERVATION_DIM, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 132),
+            torch.nn.ReLU(),
+            torch.nn.Linear(132, POSSIBLE_ACTIONS[0] * POSSIBLE_ACTIONS[1])
+        )
+        self.copyParamsToTargetModel()
+        self.target_model.eval()
 
     """
         Function for preprocessing the state such that the values are mostly
@@ -75,14 +90,21 @@ class SimpleDQNAgent:
         # Pre-process the state first
         state = self.preprocessState(state)
         # Get the predicted Q values given the state
-        y_pred = self.model(torch.Tensor(state))
+        y_target = self.target_model(torch.Tensor(state))
         y = torch.flatten(y)
         # Compute the loss between the predicted Q values and the target Q values.
-        loss = self.criterion(y_pred, torch.Tensor(y))
+        loss = self.criterion(y_target, torch.Tensor(y))
         # Have the network train with the predicted and target Q values.
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+    """
+        Function to copy the parameters from the predicted model to the
+        target model.
+    """
+    def copyParamsToTargetModel(self):
+        self.target_model.load_state_dict(self.policy_model.state_dict())
 
     """
         Function for predicting the Q values of all actions for a given state.
@@ -93,9 +115,22 @@ class SimpleDQNAgent:
         # torch.no_grad() tells the network not to keep the results of this
         # prediction in its memory for future training
         with torch.no_grad():
-            result = self.model(torch.Tensor(state))
+            result = self.policy_model(torch.Tensor(state))
             return torch.reshape(result, POSSIBLE_ACTIONS)
     
+    """
+        Function for predicting the Q values of all actions for a given state
+        using the target model.
+    """
+    def predictUsingTarget(self, state):
+        # Pre-process the state first
+        state = self.preprocessState(state)
+        # torch.no_grad() tells the network not to keep the results of this
+        # prediction in its memory for future training
+        with torch.no_grad():
+            result = self.target_model(torch.Tensor(state))
+            return torch.reshape(result, POSSIBLE_ACTIONS)
+
     """
         Function for getting the greedy action via the network predicting
         the Q values and choosing the best 7 Q values of the prediction
@@ -154,14 +189,16 @@ class SimpleDQNAgent:
         if reward == 1:
             total_reward += GAME_WON_REWARD_SHAPING
         # Add reward shaping if the game has just been lost
-        if len(next_state) == 0:
-            if reward != 1 and GAME_LOST_REWARD_SHAPING_TOGGLE:
-                total_reward += GAME_LOST_REWARD_SHAPING
+        if GAME_LOST_REWARD_SHAPING_TOGGLE:
+            if len(next_state) == 0:
+                if reward != 1:
+                    total_reward += GAME_LOST_REWARD_SHAPING
         # Add reward shaping for the territories controlled
-        if len(next_state) != 0:
-            territory_control_info = next_state[3:45:4] / 100.0
-            avg_territory_control = np.average(territory_control_info)
-            total_reward += avg_territory_control * TERRITORY_CONTROL_REWARD_SHAPING_MODIFIER
+        if TERRITORY_CONTROL_REWARD_SHAPING_TOGGLE:
+            if len(next_state) != 0:
+                territory_control_info = next_state[3:45:4] / 100.0
+                avg_territory_control = np.average(territory_control_info)
+                total_reward += avg_territory_control * TERRITORY_CONTROL_REWARD_SHAPING_MODIFIER
         # Return the final reward
         return total_reward
             
@@ -178,39 +215,30 @@ class SimpleDQNAgent:
         actions=None,
         reward=None,
     ):
-        # Grab the old predicted Q values for the previous state
-        q_values = self.predict(previous_state)
         # Perform reward shaping
         shaped_reward = self.get_reward_shaping_modifier(next_state, reward)
-        # The target for the network to train on should be the previous predicted
-        # Q values, with the rewards for the actions taken changed to the actual
-        # reward felt by the agent for taking the action + the expected future
-        # reward.
-        for action_num, action in enumerate(actions):
-            unit_group_num = int(action[0])
-            node_num = int(action[1])
-            # In this state, the agent has finished the game. We do not need to
-            # add the expected future reward since there won't be a future reward.
-            if len(next_state) == 0:
-                q_values[unit_group_num][node_num-1] = shaped_reward
-            # In this state, the agent still has not finished the game. We need
-            # to predict the future expected reward given the next state and add
-            # that to the reward felt by the agent for taking the last set of actions.
-            else:
-                # This code is just to find the top 7 actions predicted by the network.
-                best_values_per_group = np.zeros(NUM_UNIT_GROUPS)
-                next_q_values = self.predict(next_state)
-                for num, unit_group_q_values in enumerate(next_q_values):
-                    best_values_per_group[num] = np.amax(unit_group_q_values.numpy())
-            
-                top_n = np.argpartition(best_values_per_group, -NUM_ACTIONS)[-NUM_ACTIONS:]
-                # Compute the average reward for the top 7 actions to use for the
-                # discounted reward
-                maxRewardAvg = np.mean(best_values_per_group[top_n])
-                # Change the Q values as mentioned above for training.
-                q_values[unit_group_num][node_num-1] = shaped_reward + self.discount * (maxRewardAvg)
-        # Train the network given the actual Q values felt by the network.
-        self.updateModel(previous_state, q_values)
+        # Grab the state action values given the policy model
+        preprocessed_previous_state = self.preprocessState(previous_state)
+        state_action_values = self.policy_model(torch.Tensor(preprocessed_previous_state))
+        # We need to gather up the 7 actions we actually took
+        actionIndices = [int(action[0] * (action[1] -1)) for action in actions]
+        state_action_values = state_action_values[actionIndices]
+        # We need to predict the next state values. If the game is over
+        # the next state values should all be zero.
+        next_state_values = torch.zeros(1)
+        if len(next_state) != 0:
+            next_state_values = self.predictUsingTarget(next_state).max(1).values
+        # Set the expected state action values
+        print(next_state_values)
+        expected_state_action_values = (next_state_values * self.discount) + shaped_reward
+        # Compute the loss
+        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
+        # Optimize the model
+        self.optimizer.zero_grad()
+        loss.backward()
+        for param in self.policy_model.parameters():
+            param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
 
     """
         Function to handle some clean up after a full game has been played

@@ -61,13 +61,7 @@ players = {}
 names = {}
 
 players[0] = agent0_class(
-    env=env,
-    map_name=map_name,
-    h=20,
-    lr=1.0,
-    epsilon=0.0,
-    epsilon_decay=0.95,
-    discount=0.95,
+    env.num_actions_per_turn, env.observation_space, 0, map_name
 )
 names[0] = agent0_class.__name__
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
@@ -75,7 +69,7 @@ names[1] = agent1_class.__name__
 
 # Training Params
 num_games = 10000
-display_game_after = 50
+display_game_after = 5000
 
 agent_0_wins = 0
 agent_0_win_rates = []
@@ -106,19 +100,12 @@ for game_num in range(1, num_games+1):
 
         # Train the agent using the previous observations, the action the agent took, and the
         # reward it received for taking the action given the previous observations.
-        if done:
-            players[0].train(
-                previous_state=previous_observations[0],
-                actions=actions[0],
-                reward=reward[0],
-            )
-        else:
-            players[0].train(
-                previous_state=previous_observations[0],
-                next_state=next_observations[0],
-                actions=actions[0],
-                reward=reward[0],
-            )
+        players[0].train(
+            previous_state=previous_observations[0],
+            next_state=next_observations[0],
+            actions=actions[0],
+            reward=reward[0],
+        )
 
         # Reset the previous states
         previous_observations = next_observations
@@ -127,7 +114,7 @@ for game_num in range(1, num_games+1):
     env.close()
 
     # Handle end-of-episode logic
-    players[0].endOfEpisode()
+    players[0].end_of_episode(game_num)
     if reward[0] == 1:
         agent_0_wins += 1
     agent_0_wr = agent_0_wins / game_num * 100.0

@@ -1,173 +1,89 @@
-import os
-import numpy as np
-import time
-import json
+import gym
+import math
 import random
+import numpy as np
+import json
+from collections import namedtuple, deque
+from itertools import count
+
+from pathlib import Path
+
 import torch
 import torch.nn as nn
-from collections import deque
-import time
+import torch.optim as optim
+import torch.nn.functional as F
+import torchvision.transforms as T
 
-OBSERVATION_DIM = 58 #105 or 67
-NUM_UNIT_GROUPS = 12
-NUM_NODES = 11
-NUM_ACTIONS = 7
-MAX_NUM_CONNECTIONS = 6
+BATCH_SIZE = 128
+GAMMA = 0.999
+TARGET_UPDATE = 10
 
-POSSIBLE_ACTIONS = (NUM_UNIT_GROUPS, NUM_NODES)
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-import torch
-import random
-import numpy as np
+class DQNAgent():
+    def __init__(self, action_space, observation_space, player_num, map_name):
+        # Base Setup for the DQN Agent
+        self.action_space = action_space
+        self.num_groups = 12
 
-class DQNAgent:
-    def __init__(
-        self,
-        env,
-        map_name,
-        h=50,
-        lr=1e-12,
-        epsilon=1.0,
-        epsilon_decay=0.99,
-        discount=0.0,
-    ):
-        self.env = env
-        self.observation_space = env.observation_space
-        self.action_space = env.action_space
-        self.lr = lr
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
-        self.discount = discount
+        self.n_actions = action_space
+        self.n_observations = observation_space.shape
+        self.seed = 1
+
+        self.epsilon = 1.0
+        self.epsilon_decay = 0.99
 
         with open('./config/' + map_name) as fid:
             self.map_dat = json.load(fid)
-        self.connections_info = []
+
+        # Set Up the Network
+        self.policy_net = QNetwork(self.n_actions, self.n_observations, self.seed).to(device)
+        self.target_net = QNetwork(self.n_actions, self.n_observations, self.seed).to(device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
+
+        self.optimizer = optim.RMSprop(self.policy_net.parameters())
+        self.memory = ReplayMemory(10000)
+
+        self.nodes_array = []
         for i, in_node in enumerate(self.map_dat['nodes']):
-            self.connections_info.append(in_node['Connections'])
+            self.nodes_array.append(in_node['ID'])
 
-        self.criterion = torch.nn.MSELoss()
-        self.model = torch.nn.Sequential(
-            torch.nn.Linear(OBSERVATION_DIM, h),
-            torch.nn.Sigmoid(),
-            torch.nn.Linear(h, h),
-            torch.nn.Sigmoid(),
-            torch.nn.Linear(h, POSSIBLE_ACTIONS[0] * POSSIBLE_ACTIONS[1])
-        )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr)
+        self.num_nodes = len(self.map_dat['nodes'])
+        self.num_actions = action_space
 
-    def convertNodesToConnections(self, observation, actions):
-        unit_group_info = observation[45:106:5]
-        converted_actions = np.zeros(actions.shape)
-        reward_shaping = []
-        for action_num, action in enumerate(actions):
-            unit_group_num = int(action[0])
-            node_location = int(action[1])
-            connections = self.connections_info[int(unit_group_info[unit_group_num])-1]
-            action_set = False
-            for connection_num, connection in enumerate(connections):
-                if connection['ConnectedID'] == node_location:
-                    converted_actions[action_num] = np.array((
-                        unit_group_num,
-                        connection_num
-                    ))
-                    action_set = True
-                    reward_shaping.append(0.0)
-                    break
-            if not action_set:
-                converted_actions[action_num] = np.array((
-                    unit_group_num,
-                    random.choice(range(len(connections), MAX_NUM_CONNECTIONS))
-                ))
-                reward_shaping.append(0.0)
-        return converted_actions, reward_shaping
-    
-    def convertConnectionsToNodes(self, observation, actions):
-        unit_group_info = observation[45:106:5]
-        converted_actions = np.zeros(actions.shape)
-        for action_num, action in enumerate(actions):
-            unit_group_num = int(action[0])
-            connection_num = int(action[1])
-            connections = self.connections_info[int(unit_group_info[unit_group_num])-1]
-            if len(connections) <= connection_num:
-                converted_actions[action_num] = np.array((
-                    unit_group_num,
-                    unit_group_info[unit_group_num] # This may be 0 or 1 - indexed (likely 1-indexed)
-                ))
-            else:
-                converted_actions[action_num] = np.array((
-                    unit_group_num,
-                    connections[connection_num]['ConnectedID']
-                ))
-        return converted_actions
-
-    def filterObservationData(self, observation):
-        #return observation
-        simplifiedObservation = []
-        simplifiedObservation.extend(observation[3:45:4]) # Node percent controlled
-        simplifiedObservation.extend(observation[4:45:4]) # Num opponent units
-        simplifiedObservation.extend(observation[45:106:5]) # Unit Node Location
-        simplifiedObservation.extend(observation[47:106:5]) # Unit Avg Health
-        simplifiedObservation.extend(observation[48:106:5]) # Unit In Transit
-        return np.array(simplifiedObservation)
-
-    def filterQValuesByValid(self, observation, q_values):
-        return q_values
-        unit_group_info = observation[45:106:5]
-        for unit_num, unit_q_values in enumerate(q_values):
-            connections = self.connections_info[int(unit_group_info[unit_num])-1]
-            invalid = [i for i in range(11)]
-            for connection in connections:
-                invalid.remove(connection['ConnectedID']-1)
-            invalid.remove(int(unit_group_info[unit_num])-1)
-            q_values[unit_num][invalid] = -1e8
-        return q_values
-
-    def updateModel(self, state, y):
-        y_pred = self.model(torch.Tensor(state))
-        y = torch.flatten(y)
-        loss = self.criterion(y_pred, torch.Tensor(y))
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-    def predict(self, state):
-        with torch.no_grad():
-            result = self.model(torch.Tensor(state))
-            return torch.reshape(result, POSSIBLE_ACTIONS)
-        
-    def get_greedy_action(self, state):
-        filtered_state = self.filterObservationData(state)
-        q_values = self.predict(filtered_state).numpy()
-        q_values = self.filterQValuesByValid(state, q_values)
-        best_values_per_group = np.zeros(NUM_UNIT_GROUPS)
-        best_actions_per_group = np.zeros(NUM_UNIT_GROUPS)
-        for num, unit_group_q_values in enumerate(q_values):
-            best_values_per_group[num] = np.amax(unit_group_q_values)
-            best_actions_per_group[num] = np.argmax(unit_group_q_values)
-    
-        top_n = np.argpartition(best_values_per_group, -NUM_ACTIONS)[-NUM_ACTIONS:]
-
-        actions = np.array([
-            [top_n_index, best_actions_per_group[top_n_index]+1] for top_n_index in top_n
-        ])
-        #print(q_values)
-        #print(actions)
-        #print('\n')
-
-        return actions
+        self.shape = (self.num_actions, 2)
 
     def get_random_action(self):
-        action = np.zeros((7, 2))
-        action[:, 0] = np.random.choice(NUM_UNIT_GROUPS, NUM_ACTIONS, replace=False)
-        action[:, 1] = np.random.choice([i for i in range(1,11)], NUM_ACTIONS, replace=False)
+        action = np.zeros(self.shape)
+        action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
+        action[:, 1] = np.random.choice(self.nodes_array, self.num_actions, replace=True)
         return action
 
-    def get_action(self, state):
-        if random.random() < self.epsilon:
-            return self.get_random_action()
+    def get_greedy_action(self, obs):
+        with torch.no_grad():
+            action_hold = self.policy_net(obs)
+            action_hold = torch.reshape(action_hold, (12, 11)).numpy()
+            best_values_per_group = np.zeros(12)
+            best_actions_per_group = np.zeros(12)
+            for num, unit_group_q_values in enumerate(action_hold):
+                best_values_per_group[num] = np.amax(unit_group_q_values)
+                best_actions_per_group[num] = np.argmax(unit_group_q_values)
+            
+            top_n = np.argpartition(best_values_per_group, -7)[-7:]
+            actions = np.array([
+                [top_n_index, best_actions_per_group[top_n_index]+1] for top_n_index in top_n
+            ])
+
+            return actions
+
+    def get_action(self, obs):
+        sample = random.random()
+        if sample > self.epsilon:
+            return self.get_greedy_action(obs)
         else:
-            return self.get_greedy_action(state)
-    
+            return self.get_random_action()
+
     def train(
         self,
         previous_state=None,
@@ -175,32 +91,84 @@ class DQNAgent:
         actions=None,
         reward=None,
     ):
-        filtered_previous_state = self.filterObservationData(previous_state)
-        q_values = self.predict(filtered_previous_state)
-        filtered_q_values = self.filterQValuesByValid(previous_state, q_values)
-        for action_num, action in enumerate(actions):
-            unit_group_num = int(action[0])
-            node_num = int(action[1])
-            if len(next_state) == 0:
-                q_values[unit_group_num][node_num-1] = reward
-            else:
-                filtered_next_state = self.filterObservationData(next_state)
-                best_values_per_group = np.zeros(NUM_UNIT_GROUPS)
-                next_q_values = self.predict(filtered_next_state)
-                next_q_values = self.filterQValuesByValid(next_state, next_q_values)
-                for num, unit_group_q_values in enumerate(next_q_values):
-                    best_values_per_group[num] = np.amax(unit_group_q_values.numpy())
-            
-                top_n = np.argpartition(best_values_per_group, -NUM_ACTIONS)[-NUM_ACTIONS:]
-                maxRewardAvg = np.mean(best_values_per_group[top_n])
+        self.memory.push(previous_state, actions, next_state, reward)
 
-                node_control_info = next_state[3:45:4]
-                control_reward = np.average(node_control_info) / 100.0
+        if len(self.memory) < BATCH_SIZE:
+            return
+        transitions = self.memory.sample(BATCH_SIZE)
 
-                q_values[unit_group_num][node_num-1] = reward + self.discount * (maxRewardAvg)
-        self.updateModel(filtered_previous_state, q_values) 
-        time.sleep(0.0)
+        batch = Transition(*zip(*transitions))
+        next_state_tensor = torch.from_numpy(np.asarray(batch.next_state))
+        state_tensor = torch.from_numpy(np.asarray(batch.state))
+        action_tensor = torch.from_numpy(np.asarray(batch.action))
+        reward_tensor = torch.from_numpy(np.asarray(batch.reward))
 
-    def endOfEpisode(self):
-        self.epsilon = max(self.epsilon * self.epsilon_decay, 0.0)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                            batch.next_state)), device=device, dtype=torch.bool)
+        non_final_next_states = next_state_tensor
+        state_batch = state_tensor
+        action_batch = action_tensor
+        reward_batch = reward_tensor
+
+        state_action_values = self.policy_net(state_batch)
+
+        next_state_values = torch.zeros(BATCH_SIZE, device=device)
+        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+        
+        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+
+        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
+
+    def end_of_episode(self, episodes):
+        self.epsilon *= self.epsilon_decay
         print(self.epsilon)
+        if episodes % TARGET_UPDATE == 0:
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'next_state', 'reward'))
+
+class ReplayMemory(object):
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.memory = []
+        self.position = 0
+
+    def push(self, *args):
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = Transition(*args)
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
+
+class QNetwork(nn.Module):
+    def __init__(self, action_size, observation_size, seed, fc1_unit=128,
+                 fc2_unit=128, fc3_unit=132):
+        action_size = 12*11
+        super(QNetwork, self).__init__()
+        self.seed = torch.manual_seed(seed)
+        self.fc1 = nn.Linear(observation_size[0], fc1_unit)
+        self.fc2 = nn.Linear(fc1_unit, fc2_unit)
+        self.fc3 = nn.Linear(fc2_unit, fc3_unit)
+        self.fc4 = nn.Linear(fc3_unit, action_size)
+
+    def forward(self, x):
+        if (type(x).__module__ == np.__name__):
+            x = torch.from_numpy(x)
+        
+        x = x.float()
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        return self.fc4(x)
