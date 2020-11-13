@@ -21,8 +21,14 @@ BATCH_SIZE = 128
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 200
+
+### Updated the decay to finish around episode 200-250
+# Reduce by one order of magnitude to finish around episode 20
+EPS_DECAY = 0.0001
+###
+
 TARGET_UPDATE = 10
+steps_done = 0
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -77,10 +83,14 @@ class DQNAgent():
     
     def get_action(self, obs):
         global steps_done
-        steps_done = 0
         sample = random.random()
-        eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-        math.exp(-1. * steps_done / EPS_DECAY)
+
+        ### Updated the eps equation to be more readable (based on the pytorch implementation on 
+        # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
+        eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(steps_done * -EPS_DECAY)
+        ###
+
+        #print("Current Epsilon: {}\tSteps Done: {}\n", eps_threshold,steps_done)
         steps_done += 1
         action = np.zeros(self.shape)
         if sample > eps_threshold:
@@ -96,16 +106,13 @@ class DQNAgent():
                 for i in range(12):
                     for j in range(11):
                         for k in range(7):
+                            
                             if action_hold[i,j] > action_qs[k]:
                                 action_qs[k] = action_hold[i,j]
                                 action_units[k] = i
                                 action_nodes[k] = j
                                 break
                 
-                #print("Full Actions", action_hold)
-                #print("Units", action_units)
-                #print("Nodes", action_nodes)
-                #print("Qs", action_qs)
                 action[:, 0] = action_units
                 action[:, 1] = action_nodes
         else:
@@ -114,6 +121,20 @@ class DQNAgent():
             
         #print(action)
         return action
+
+    ### Duplicate checker
+    # Only tells the get_action not to use a particular unit
+    def check_duplicates(self,i,j,action_units,action_nodes):
+        no_dupes = True
+        # Only need to check for duplicate units
+        # Duplicate nodes are allowed
+        for u in action_units:
+            if u == i:
+                no_dupes = False
+        
+        return no_dupes
+    ###
+
 
     def optimize_model(self):
         if len(self.memory) < BATCH_SIZE:
@@ -212,8 +233,8 @@ import torchvision.transforms as T
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
-    def __init__(self, action_size,observation_size, seed,fc1_unit=128,
-                 fc2_unit = 128, fc3_unit = 132):
+    def __init__(self, action_size,observation_size, seed,fc1_unit=528,
+                 fc2_unit = 256, fc3_unit = 132):
         """
         Initialize parameters and build model.
         Params

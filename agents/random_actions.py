@@ -46,5 +46,10 @@ class random_actions:
         action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
         action[:, 1] = np.random.choice(self.nodes_array, self.num_actions, replace=False)
         #print('!!!actions!!!')
-        #print(action)
+        
+        ### For bug testing
+        #print("RAND Units: {}",action[:,0])
+        #print("RAND Nodes: {}",action[:,1])
+        ###
+
         return action
