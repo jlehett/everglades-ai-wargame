@@ -13,3 +13,6 @@
 # Ignore specific game telemetry directories
 **/game_telemetry/**
 **/Telemetry/**
+
+# We don't want to see the performance pngs committed
+/performance.png
