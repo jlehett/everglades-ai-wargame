@@ -36,7 +36,7 @@ def plotAgentPerformance(win_rate, num_games, save=False):
 # Agent files must include a class of the same name with a 'get_action' function
 # Do not include './' in file path
 training_agent_file = 'agents/' + sys.argv[1]
-random_agent_file = 'agents/random_actions'
+random_agent_file = 'agents/State_Machine/random_actions'
 
 map_name = "DemoMap.json"
     
@@ -60,16 +60,14 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
-players[0] = agent0_class(
-    env.num_actions_per_turn, env.observation_space, 0, map_name
-)
+players[0] = agent0_class()
 names[0] = agent0_class.__name__
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
 names[1] = agent1_class.__name__
 
 # Training Params
 num_games = 10000
-display_game_after = 50
+display_game_after = 250
 
 agent_0_wins = 0
 agent_0_win_rates = []

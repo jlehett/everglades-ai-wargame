@@ -30,8 +30,8 @@ class DQNAgent():
         self.n_observations = observation_space.shape
         self.seed = 1
 
-        self.epsilon = 0.3
-        self.epsilon_decay = 0.9
+        self.epsilon = 0.9
+        self.epsilon_decay = 0.9999
 
         with open('./config/' + map_name) as fid:
             self.map_dat = json.load(fid)
@@ -81,11 +81,25 @@ class DQNAgent():
         return action
 
     def get_action(self, obs):
+        self.epsilon *= self.epsilon_decay
         sample = random.random()
         if sample > self.epsilon:
             return self.get_greedy_action(obs)
         else:
             return self.get_random_action()
+
+    def get_shaped_reward(self, next_state):
+        total_reward = 0
+        if len(next_state) != 0:
+            territory_control_info = next_state[3:45:4]
+            for territory_control in territory_control_info:
+                if (np.abs(territory_control) == 100.0):
+                    total_reward += 2 * territory_control
+                else:
+                    total_reward += territory_control
+            if territory_control_info[-1] > 0.0 and territory_control_info[0] > 0.0:
+                total_reward += 1000.0
+        return int(total_reward)
 
     def train(
         self,
@@ -94,7 +108,8 @@ class DQNAgent():
         actions=None,
         reward=None,
     ):
-        self.memory.push(previous_state, actions, next_state, reward)
+        shaped_reward = self.get_shaped_reward(next_state)
+        self.memory.push(previous_state, actions, next_state, shaped_reward)
 
         if len(self.memory) < BATCH_SIZE:
             return
@@ -129,7 +144,6 @@ class DQNAgent():
         self.optimizer.step()
 
     def end_of_episode(self, episodes):
-        self.epsilon *= self.epsilon_decay
         print(self.epsilon)
         if episodes % TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
