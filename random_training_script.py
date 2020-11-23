@@ -60,7 +60,7 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
-players[0] = agent0_class()
+players[0] = agent0_class(env.num_actions_per_turn, env.observation_space, 0, map_name)
 names[0] = agent0_class.__name__
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
 names[1] = agent1_class.__name__
@@ -68,6 +68,7 @@ names[1] = agent1_class.__name__
 # Training Params
 num_games = 10000
 display_game_after = 250
+display_game_every = 5
 
 agent_0_wins = 0
 agent_0_win_rates = []
@@ -88,7 +89,7 @@ for game_num in range(1, num_games+1):
     # Game Loop
     done = 0
     while not done:
-        if display_game_after and game_num >= display_game_after:
+        if display_game_after and game_num >= display_game_after and game_num % display_game_every == 0:
             env.render()
         
         for pid in players:
@@ -113,6 +114,8 @@ for game_num in range(1, num_games+1):
 
     # Handle end-of-episode logic
     players[0].end_of_episode(game_num)
+
+    # Handle score tracking
     if reward[0] == 1:
         agent_0_wins += 1
     agent_0_wr = agent_0_wins / game_num * 100.0
@@ -121,5 +124,6 @@ for game_num in range(1, num_games+1):
     print('\n')
     agent_0_win_rates.append(agent_0_wr)
 
+    # Plot performance every 50 games
     if game_num % 50 == 0:
         plotAgentPerformance(agent_0_win_rates, num_games, save=True)
