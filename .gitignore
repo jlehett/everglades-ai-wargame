@@ -14,5 +14,5 @@
 **/game_telemetry/**
 **/Telemetry/**
 
-# We don't want to see the performance pngs committed
+# Ignore performance graph images
 /performance.png
