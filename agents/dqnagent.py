@@ -22,19 +22,23 @@ GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
 
-### Updated the decay to finish around episode 200-250
-# Reduce by one order of magnitude to finish around episode 20
-EPS_DECAY = 0.0001
+### Updated the decay to finish later
+# Increase by one order of magnitude to finish around episode 200-250
+EPS_DECAY = 0.00005
 ###
 
 TARGET_UPDATE = 10
 steps_done = 0
+
+# Use custom reward shaping
+custom_reward = False
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class DQNAgent():
     def __init__(self,action_space,observation_space, player_num,map_name):
         #Base Setup for the DQN Agent
+        self.eps_threshold = 0
         self.action_space = action_space
         self.num_groups = 12
 
@@ -46,8 +50,8 @@ class DQNAgent():
             self.map_dat = json.load(fid)
 
         ## SETUP THE NETWORK ##
-        self.policy_net = QNetwork(self.n_actions,self.n_observations,self.seed).to(device)
-        self.target_net = QNetwork(self.n_actions,self.n_observations,self.seed).to(device)
+        self.policy_net = QNetwork(self.n_observations,self.n_actions,self.seed).to(device)
+        self.target_net = QNetwork(self.n_observations,self.n_actions,self.seed).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -87,26 +91,30 @@ class DQNAgent():
 
         ### Updated the eps equation to be more readable (based on the pytorch implementation on 
         # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
-        eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(steps_done * -EPS_DECAY)
+        self.eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(steps_done * -EPS_DECAY)
         ###
 
         #print("Current Epsilon: {}\tSteps Done: {}\n", eps_threshold,steps_done)
         steps_done += 1
         action = np.zeros(self.shape)
-        if sample > eps_threshold:
+        if sample > self.eps_threshold:
             with torch.no_grad():
-                # t.max(1) will return largest column value of each row.
-                # second column on max result is index of where max element was
-                # found, so we pick action with the larger expected reward.
+
+                # Get the action_output from network and reshape to 2D tensor
                 action_hold = self.policy_net(obs)
                 action_hold = torch.reshape(action_hold, (12,11))
+
+                # Initialize unit, node and q-value arrays
                 action_units = np.zeros(7)
                 action_nodes = np.zeros(7)
                 action_qs = np.zeros(7)
+
+                # Unravel the output tensor into two size 7 arrays
                 for i in range(12):
                     for j in range(11):
                         for k in range(7):
-                            
+                            # Get largest q-value actions
+                            # Discard if lower than another action
                             if action_hold[i,j] > action_qs[k]:
                                 action_qs[k] = action_hold[i,j]
                                 action_units[k] = i
@@ -116,6 +124,8 @@ class DQNAgent():
                 action[:, 0] = action_units
                 action[:, 1] = action_nodes
         else:
+            # Choose random action
+            # Based on implementation in random_actions agent
             action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
             action[:, 1] = np.random.choice(self.nodes_array, self.num_actions, replace=False)
             
@@ -184,8 +194,18 @@ class DQNAgent():
         self.optimizer.step()
     
     def update_target(self,episodes):
+        # Updates the target model to reflect the current policy model
          if episodes % TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
+
+    #######################################
+    # TODO: Internalized reward function  #
+    #######################################
+    def set_reward(self, obs):
+        if(not custom_reward):
+            return 0
+        return
+    #################################
 
 ### DEFINE REPLAY MEMORY ###
 
@@ -194,7 +214,7 @@ Transition = namedtuple('Transition',
 
 
 class ReplayMemory(object):
-
+    # Simple Replay Memory
     def __init__(self, capacity):
         self.capacity = capacity
         self.memory = []
@@ -233,25 +253,45 @@ import torchvision.transforms as T
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
-    def __init__(self, action_size,observation_size, seed,fc1_unit=528,
-                 fc2_unit = 256, fc3_unit = 132):
+    def __init__(self,observation_size,action_size, seed, fc1_unit = 528,
+                 fc2_unit = 256, fc3_unit = 256):
         """
         Initialize parameters and build model.
         Params
         =======
-            observation_space (int): Dimension of each state
-            action_space (int): Dimension of each action
+            observation_size (int): Dimension of each state
+            action_size (int): Dimension of each action
             seed (int): Random seed
             fc1_unit (int): Number of nodes in first hidden layer
             fc2_unit (int): Number of nodes in second hidden layer
         """
-        action_size = 12 * 11
+        self.action_size = 12 * 11
         super(QNetwork,self).__init__() ## calls __init__ method of nn.Module class
         self.seed = torch.manual_seed(seed)
         self.fc1 = nn.Linear(observation_size[0],fc1_unit)
         self.fc2 = nn.Linear(fc1_unit,fc2_unit)
-        self.fc3 = nn.Linear(fc2_unit,fc3_unit)
-        self.fc4 = nn.Linear(fc3_unit, action_size)
+
+        #############################################################################################
+        #   Non-Dueling Architecture                                                                #
+        #############################################################################################
+
+        self.fc3 = nn.Linear(fc2_unit, fc3_unit)
+        self.fc4 = nn.Linear(fc3_unit, self.action_size)
+
+        #############################################################################################
+
+        #############################################################################################
+        # Dueling Network Architecture                                                              #
+        # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
+        #############################################################################################
+
+        #self.fc3_adv = nn.Linear(fc2_unit,fc3_unit)
+        #self.fc3_val = nn.Linear(fc2_unit,fc3_unit)
+
+        #self.fc4_adv = nn.Linear(fc3_unit,self.action_size)
+        #self.fc4_val = nn.Linear(fc3_unit,1)
+
+        ##############################################################################################
         
     def forward(self,x):
         # x = state
@@ -266,5 +306,30 @@ class QNetwork(nn.Module):
         x = x.float()
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
+
+        #############################################################################################
+        #   Non-Dueling Architecture                                                                #
+        #############################################################################################
+
         x = F.relu(self.fc3(x))
-        return self.fc4(x)
+        x = F.relu(self.fc4(x))
+
+        #############################################################################################
+
+        #############################################################################################
+        # Dueling Network Architecture                                                              #
+        # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
+        #############################################################################################
+        
+        #adv = F.relu(self.fc3_adv(x))
+        #val = F.relu(self.fc3_val(x))
+
+        #adv = self.fc4_adv(adv)
+        #val = self.fc4_val(val)
+
+        #advAverage = adv.mean()
+        #x = val + adv - advAverage
+
+        ##############################################################################################
+
+        return x

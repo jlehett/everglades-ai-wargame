@@ -12,6 +12,7 @@ import numpy as np
 
 from everglades_server import server
 from agents.dqnagent import DQNAgent
+
 #from everglades-server import generate_map
 
 ## Input Variables
@@ -22,13 +23,16 @@ if len(sys.argv) > 2:
 else:
     agent1_file = 'agents/random_actions'
 
+#############################
+# Environment Config Setup  #
+#############################
 map_name = "DemoMap.json"
-    
 config_dir = 'D:\\Senior Design\\everglades-ai-wargame\\config\\'  
 map_file = config_dir + map_name
 setup_file = config_dir + 'GameSetup.json'
 unit_file = config_dir + 'UnitDefinitions.json'
 output_dir = './game_telemetry/'
+#############################
 
 debug = 1
 
@@ -42,10 +46,15 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
+#################
+# Setup agents  #
+#################
 players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space, 0, map_name)
 names[0] = "DQN Agent"
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
 names[1] = agent1_class.__name__
+#################
+
 
 actions = {}
 
@@ -53,11 +62,16 @@ actions = {}
 # Change back to resonable setting for other testing
 n_episodes= 1000
 
+#########################
+# Statistic variables   #
+#########################
 scores = []
 ties = 0
 losses = 0
 scores_window = deque(maxlen=100) # last 100 scores
 score = 0
+current_eps = 0
+#########################
 
 ## Training Loop
 for i_episode in range(1, n_episodes+1):
@@ -84,18 +98,31 @@ for i_episode in range(1, n_episodes+1):
         #    env.game.debug_state()
         ###
 
+        # Get actions for each player
         for pid in players:
             actions[pid] = players[pid].get_action( observations[pid] )
+
+        # Grab previos observation for agent
         prev_observation = observations[0]
+
+        # Update env
         observations, reward, done, info = env.step(actions)
         
         ### Debug reward values
         #print("Reward: {}", reward)
         ###
 
+        #########################
+        # Handle agent update   #
+        #########################
+        reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
         players[0].memory.push(prev_observation,actions[0],observations[0],reward[0])
         players[0].optimize_model()
-        players[0].update_target(1)
+        players[0].update_target(i_episode)
+        #########################
+
+        current_eps = players[0].eps_threshold
+
         #pdb.set_trace()
 
 
@@ -108,10 +135,18 @@ for i_episode in range(1, n_episodes+1):
         losses += 1
     ###
 
+    #############################################
+    # Update Score statistics for final chart   #
+    #############################################
     scores_window.append(score / i_episode) ## save the most recent score
     scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tAverage Score: {:.2f}\tWins: {}\tLosses: {}\tTies: {}'.format(i_episode,current_wr,np.mean(scores_window),score,losses,ties), end="")
+    #############################################
+
+    #################################
+    # Print current run statistics  #
+    #################################
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode,current_wr,score,losses,current_eps, ties), end="")
     if i_episode %100==0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(scores_window)))
         
@@ -119,11 +154,16 @@ for i_episode in range(1, n_episodes+1):
         print('\nEnvironment solve in {:d} epsiodes!\tAverage score: {:.2f}'.format(i_episode-100,
                                                                                     np.mean(scores_window)))
         break
+    ################################
     env.close()
 
+#####################
+# Plot final chart  #
+#####################
 fig = plt.figure()
 ax = fig.add_subplot(111)
 plt.plot(np.arange(len(scores)),scores)
 plt.ylabel('Score')
 plt.xlabel('Epsiode #')
 plt.show()
+#####################
