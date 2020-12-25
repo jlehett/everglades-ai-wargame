@@ -11,7 +11,7 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.dqnagent import DQNAgent
+from agents.DQN.DQNAgent import DQNAgent
 
 #from everglades-server import generate_map
 
@@ -21,20 +21,20 @@ from agents.dqnagent import DQNAgent
 if len(sys.argv) > 2:
     agent1_file = 'agents/' + sys.argv[2]
 else:
-    agent1_file = 'agents/random_actions'
+    agent1_file = 'agents/State_Machine/random_actions_delay'
 
 #############################
 # Environment Config Setup  #
 #############################
 map_name = "DemoMap.json"
-config_dir = '/config'  
+config_dir = './config/'  
 map_file = config_dir + map_name
 setup_file = config_dir + 'GameSetup.json'
 unit_file = config_dir + 'UnitDefinitions.json'
 output_dir = './game_telemetry/'
 #############################
 
-debug = 1
+debug = False
 
 ## Specific Imports
 agent1_name, agent1_extension = os.path.splitext(agent1_file)
@@ -127,9 +127,9 @@ for i_episode in range(1, n_episodes+1):
 
 
     ### Updated win calculator to reflect new reward system
-    if(reward[0] == 10000):
+    if(reward[0] > reward[1]):
         score += 1
-    elif(reward[0] == 0):
+    elif(reward[0] == reward[1]):
         ties += 1
     else:
         losses += 1
