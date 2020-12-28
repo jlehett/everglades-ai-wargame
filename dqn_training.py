@@ -11,7 +11,7 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.DQN.DQNAgent import DQNAgent
+from agents.Multi_Step_Learning.DQNAgent import DQNAgent
 
 #from everglades-server import generate_map
 
@@ -116,9 +116,8 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
         reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
-        players[0].memory.push(prev_observation,actions[0],observations[0],reward[0])
-        players[0].optimize_model()
-        players[0].update_target(i_episode)
+        players[0].optimize_model(prev_observation, observations[0], actions[0], reward[0])
+        players[0].end_of_episode(i_episode)
         #########################
 
         current_eps = players[0].eps_threshold
