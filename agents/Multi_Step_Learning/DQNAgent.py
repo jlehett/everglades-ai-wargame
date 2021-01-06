@@ -42,7 +42,7 @@ class DQNAgent():
         #Base Setup for the DQN Agent
         self.num_groups = 12
         self.n_actions = action_space
-        self.n_observations = observation_space.shaped
+        self.n_observations = observation_space.shape
         self.shape = (self.n_actions, 2)
         self.steps_done = 0
 
@@ -53,7 +53,7 @@ class DQNAgent():
         self.policy_net = QNetwork(self.n_observations, self.n_actions).to(device)
         self.target_net = QNetwork(self.n_observations, self.n_actions).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.target_net.no_grad()
+        self.target_net.eval()
 
         # Set the optimizer to use in training the network
         self.optimizer = optim.RMSprop(self.policy_net.parameters())
@@ -95,9 +95,9 @@ class DQNAgent():
                         for action_index in range(self.n_actions):
                             # Get largest q-value actions
                             # Discard if lower than another action
-                            if action_qs[group_index, node_index] > action_qs[action_index]:
+                            if action_qs[group_index, node_index] > best_action_qs[action_index]:
                                 # Prevent unit numbers from appearing in best_action_units multiple times
-                                if group_index in best_action_units and best_action_units[action_index] !== group_index:
+                                if group_index in best_action_units and best_action_units[action_index] != group_index:
                                     continue
                                 else:
                                     best_action_qs[action_index] = action_qs[group_index, node_index]
@@ -106,8 +106,8 @@ class DQNAgent():
                                     break
                 
                 # Create the final action array to return in a readable format
-                action[:, 0] = action_units
-                action[:, 1] = action_nodes
+                action[:, 0] = best_action_units
+                action[:, 1] = best_action_nodes
         else:
             # Choose random action
             # Based on implementation in random_actions agent
