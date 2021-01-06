@@ -117,13 +117,17 @@ for i_episode in range(1, n_episodes+1):
         #########################
         reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
         players[0].optimize_model(prev_observation, observations[0], actions[0], reward[0])
-        players[0].end_of_episode(i_episode)
         #########################
 
         current_eps = players[0].eps_threshold
 
         #pdb.set_trace()
 
+
+    ################################
+    # End of episode agent updates #
+    ################################
+    players[0].end_of_episode(i_episode)
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):

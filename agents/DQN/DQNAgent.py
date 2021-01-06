@@ -233,24 +233,6 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
-
-import gym
-import math
-import random
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-import json
-from collections import namedtuple
-from itertools import count
-from PIL import Image
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
-
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
     def __init__(self,observation_size,action_size, seed, fc1_unit = 528,
