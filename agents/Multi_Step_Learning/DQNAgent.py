@@ -117,7 +117,7 @@ class DQNAgent():
         #print(action)
         return action
 
-    def optimize_model(
+    def remember_game_state(
         self,
         previous_state=None,
         next_state=[],
@@ -127,6 +127,7 @@ class DQNAgent():
         # Add the new experience to the NStepModule for experience replay
         self.NStepModule.trackGameState(previous_state, actions, reward)
 
+    def optimize_model(self):
         # If the NStepModule's experience replay isn't large enough, we should bail out.
         # Otherwise, we can grab sample data from the replay memory.
         if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
