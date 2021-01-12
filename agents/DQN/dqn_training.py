@@ -1,5 +1,6 @@
 ## Static Imports
 import os
+import sys
 import importlib
 import gym
 import gym_everglades
@@ -11,23 +12,19 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.DQN.DQNAgent import DQNAgent
+from DQNAgent import DQNAgent
+
+# Import agent to train against
+sys.path.append(os.path.abspath('../'))
+from State_Machine.random_actions import random_actions
 
 #from everglades-server import generate_map
-
-## Input Variables
-# Agent files must include a class of the same name with a 'get_action' function
-# Do not include './' in file path
-if len(sys.argv) > 2:
-    agent1_file = 'agents/' + sys.argv[2]
-else:
-    agent1_file = 'agents/State_Machine/random_actions'
 
 #############################
 # Environment Config Setup  #
 #############################
 map_name = "DemoMap.json"
-config_dir = './config/'  
+config_dir = '../../config/'  
 map_file = config_dir + map_name
 setup_file = config_dir + 'GameSetup.json'
 unit_file = config_dir + 'UnitDefinitions.json'
@@ -35,11 +32,6 @@ output_dir = './game_telemetry/'
 #############################
 
 debug = False
-
-## Specific Imports
-agent1_name, agent1_extension = os.path.splitext(agent1_file)
-agent1_mod = importlib.import_module(agent1_name.replace('/','.'))
-agent1_class = getattr(agent1_mod, os.path.basename(agent1_name))
 
 ## Main Script
 env = gym.make('everglades-v0')
@@ -50,11 +42,10 @@ names = {}
 # Setup agents  #
 #################
 players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space, 0, map_name)
-names[0] = "DQN Agent"
-players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
-names[1] = agent1_class.__name__
+names[0] = 'DQN Agent'
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+names[1] = 'Random Agent'
 #################
-
 
 actions = {}
 

@@ -46,7 +46,7 @@ class DQNAgent():
         self.n_observations = observation_space.shape
         self.seed = 1
 
-        with open('./config/' + map_name) as fid:
+        with open('../../config/' + map_name) as fid:
             self.map_dat = json.load(fid)
 
         ## SETUP THE NETWORK ##

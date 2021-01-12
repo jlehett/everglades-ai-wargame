@@ -16,11 +16,6 @@ Next, install the Everglades server with:
 ```bash
 pip install -e everglades-server/
 ```
-Finally, edit the ***test_battle.py*** script to reflect the current working environment. Update the following lines with their path in the filesystem:
-*  agent 0 file
-*  agent 1 file
-*  config directory
-*  output directory
 
 # File and Directory Descriptions
 
@@ -36,17 +31,9 @@ This directory containes setup files which are used for game logic. Currently on
 
 This directory contains the main logic for the Everglades game. 
 
-### ./game_telemetry/
-
-This is the default output directory for any match telemetry output. It is only populated locally and not stored in the git repository.
-
 ### ./gym-everglades/
 
 This directory is the OpenAI Gym for project Everglades. It follows the Gym API standards.
-
-### ./test_battle.py
-
-This is the script to execute for running two agents against each other.
 
 ### ./README.md
 

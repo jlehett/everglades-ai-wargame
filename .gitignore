@@ -16,3 +16,6 @@
 
 # Ignore performance graph images
 /performance.png
+
+# Ignore the vscode directory
+**/.vscode
