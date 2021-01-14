@@ -17,7 +17,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
@@ -31,7 +31,7 @@ TARGET_UPDATE = 10
 steps_done = 0
 
 # Distributional RL variables
-N_ATOMS = 51
+N_ATOM = 51
 V_MIN = -5.
 V_MAX = 10.
 V_RANGE = np.linspace(V_MIN, V_MAX, N_ATOM)
@@ -54,12 +54,11 @@ class DQNAgent():
         self.n_observations = observation_space.shape
         self.seed = 1
 
-         # Setup for DRL
-        self.memory_counter = 0
-        self.learn_step_counter = 0
-
         with open('./config/' + map_name) as fid:
             self.map_dat = json.load(fid)
+
+        # discrete values for DRL
+        self.value_range = torch.FloatTensor(V_RANGE) # (N_ATOM)
 
         ## SETUP THE NETWORK ##
         self.policy_net = QNetwork(self.n_observations,self.n_actions,self.seed).to(device)
@@ -69,7 +68,6 @@ class DQNAgent():
 
         self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.memory = ReplayMemory(10000)
-
 
         self.steps_done = 0
 
@@ -162,7 +160,6 @@ class DQNAgent():
         if len(self.memory) < BATCH_SIZE:
             return
         transitions = self.memory.sample(BATCH_SIZE)
-        '''
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
@@ -179,11 +176,17 @@ class DQNAgent():
         state_batch = state_tensor
         action_batch = action_tensor
         reward_batch = reward_tensor
+        done_batch = non_final_mask
 
+        weight_batch = np.ones_like(reward_batch)
+
+        # action value distribution prediction
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
         state_action_values = self.policy_net(state_batch)
+        mb_size = state_action_values.size(0)
+        #state_action_values = torch.stack([state_action_values[i].index_select(0, action_batch[i]) for i in range(mb_size)]).squeeze(1) 
         #state_action_values = torch.gather(state_action_values,1.0, action_batch)
 
         # Compute V(s_{t+1}) for all next states.
@@ -193,47 +196,19 @@ class DQNAgent():
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
         next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+        #print(next_state_values)
+
+        # distribution of next_state_values, and next_state_value_mean
+        #next_state_values_mean = torch.sum(next_state_values * self.value_range.view(1, 1, -1), dim=2) # (m, N_ACTIONS)
+        #best_actions = next_state_values_mean.argmax(dim=1) # (m)
+        #print(best_actions)
+        #next_state_values = torch.stack([next_state_values[i].index_select(0, best_actions[i]) for i in range(mb_size)]).squeeze(1) 
+
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
-        # Compute Huber loss
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-
-        # Optimize the model
-        self.optimizer.zero_grad()
-        loss.backward()
-        for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
-        '''
-
-
-
-        ################################
-        # DRL initializations. Should be refactored to fit the variables above.
-        b_s, b_a, b_r,b_s_, b_d = self.replay_buffer.sample(BATCH_SIZE)
-        b_w, b_idxes = np.ones_like(b_r), None
-            
-        b_s = torch.FloatTensor(b_s)
-        b_a = torch.LongTensor(b_a)
-        b_s_ = torch.FloatTensor(b_s_)
-
-        # action value distribution prediction
-        q_eval = self.policy_net(b_s) # (m, N_ACTIONS, N_ATOM)
-        mb_size = q_eval.size(0)
-        q_eval = torch.stack([q_eval[i].index_select(0, b_a[i]) for i in range(mb_size)]).squeeze(1)
-        # (m, N_ATOM)
-
         # target distribution
         q_target = np.zeros((mb_size, N_ATOM)) # (m, N_ATOM)
-
-        # get next state value
-        q_next = self.target_net(b_s_).detach() # (m, N_ACTIONS, N_ATOM)
-        # next value mean
-        q_next_mean = torch.sum(q_next * self.value_range.view(1, 1, -1), dim=2) # (m, N_ACTIONS)
-        best_actions = q_next_mean.argmax(dim=1) # (m)
-        q_next = torch.stack([q_next[i].index_select(0, best_actions[i]) for i in range(mb_size)]).squeeze(1) 
-        q_next = q_next.data.cpu().numpy() # (m, N_ATOM)
 
         # categorical projection
         '''
@@ -241,40 +216,44 @@ class DQNAgent():
         next_v_pos : relative position when offset of value is V_MIN, shape : (m, N_ATOM)
         '''
         # we vectorized the computation of support and position
-        next_v_range = np.expand_dims(b_r, 1) + GAMMA * np.expand_dims((1. - b_d),1) \
-        * np.expand_dims(self.value_range.data.cpu().numpy(),0)
+        next_v_range = np.expand_dims(reward_batch, 1) + GAMMA * np.expand_dims((~done_batch),1) \
+        * np.expand_dims(self.value_range.data.cpu().numpy(),0) #what is value_range.data?
+        #print(next_v_range)
         next_v_pos = np.zeros_like(next_v_range)
-            # clip for categorical distribution
+        # clip for categorical distribution
         next_v_range = np.clip(next_v_range, V_MIN, V_MAX)
         # calc relative position of possible value
         next_v_pos = (next_v_range - V_MIN)/ V_STEP
         # get lower/upper bound of relative position
         lb = np.floor(next_v_pos).astype(int)
         ub = np.ceil(next_v_pos).astype(int)
+        #print(next_v_pos)
+        #print(next_v_range)
         # we didn't vectorize the computation of target assignment.
         for i in range(mb_size):
             for j in range(N_ATOM):
                 # calc prob mass of relative position weighted with distance
-                q_target[i, lb[i,j]] += (q_next * (ub - next_v_pos))[i,j]
-                q_target[i, ub[i,j]] += (q_next * (next_v_pos - lb))[i,j]
+                q_target[i, lb[i,j]] += (next_state_values * (ub - next_v_pos))[i,j]
+                q_target[i, ub[i,j]] += (next_state_values * (next_v_pos - lb))[i,j]
 
         q_target = torch.FloatTensor(q_target)
 
-        # calc huber loss, dont reduce for importance weight
-        loss = q_target * ( - torch.log(q_eval + 1e-8)) # (m , N_ATOM)
-        loss = torch.mean(loss)
-        
-        # calc importance weighted loss
-        b_w = torch.Tensor(b_w)
-        if USE_GPU:
-            b_w = b_w.cuda()
-        loss = torch.mean(b_w*loss)
-        
-        # backprop loss
+        # Calculate Huber loss, dont reduce for importance weight
+        #loss = q_target * ( - torch.log(state_action_values + 1e-8)) # (m , N_ATOM)
+        #loss = torch.mean(loss)
+
+        # Compute Huber loss
+        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+
+        #weight_batch = torch.Tensor(weight_batch)
+        #loss = torch.mean(weight_batch*loss)
+
+        # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
-        ################################
     
     def update_target(self,episodes):
         # Updates the target model to reflect the current policy model
@@ -315,24 +294,6 @@ class ReplayMemory(object):
 
     def __len__(self):
         return len(self.memory)
-
-
-import gym
-import math
-import random
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-import json
-from collections import namedtuple
-from itertools import count
-from PIL import Image
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""

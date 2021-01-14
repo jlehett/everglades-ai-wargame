@@ -33,7 +33,8 @@ steps_done = 0
 # Use custom reward shaping
 custom_reward = False
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 
 class DQNAgent():
     def __init__(self,action_space,observation_space, player_num,map_name):
@@ -232,24 +233,6 @@ class ReplayMemory(object):
 
     def __len__(self):
         return len(self.memory)
-
-
-import gym
-import math
-import random
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-import json
-from collections import namedtuple
-from itertools import count
-from PIL import Image
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
