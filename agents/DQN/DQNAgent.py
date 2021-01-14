@@ -17,6 +17,12 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 
+# PER
+from pathlib import Path
+from agents.DQN.PER import SumTree
+from agents.DQN.PER import Memory
+# from collections import deque
+
 BATCH_SIZE = 128
 GAMMA = 0.999
 EPS_START = 0.9
@@ -41,10 +47,10 @@ class DQNAgent():
         self.eps_threshold = 0
         self.action_space = action_space
         self.num_groups = 12
-
         self.n_actions = action_space
         self.n_observations = observation_space.shape
         self.seed = 1
+
 
         with open('./config/' + map_name) as fid:
             self.map_dat = json.load(fid)
@@ -56,7 +62,10 @@ class DQNAgent():
         self.target_net.eval()
 
         self.optimizer = optim.RMSprop(self.policy_net.parameters())
-        self.memory = ReplayMemory(10000)
+
+        # PER
+        self.memory = Memory(10000)
+        # self.memory = deque(maxlen=10000)
 
 
         self.steps_done = 0
@@ -147,13 +156,16 @@ class DQNAgent():
 
 
     def optimize_model(self):
-        if len(self.memory) < BATCH_SIZE:
-            return
-        transitions = self.memory.sample(BATCH_SIZE)
+        #if len(self.memory) < BATCH_SIZE:
+            #return
+    
+        tree_idx, batch = self.memory.sample(BATCH_SIZE)
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
-        batch = Transition(*zip(*transitions))
+        #batch = Transition(*zip(*transitions))
+
+        
         next_state_tensor = torch.from_numpy(np.asarray(batch.next_state))
         state_tensor = torch.from_numpy(np.asarray(batch.state))
         action_tensor = torch.from_numpy(np.asarray(batch.action))
@@ -185,6 +197,10 @@ class DQNAgent():
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+        # PER
+        indices = np.arange(self.batch_size, dtype=np.int32)
+        absolute_errors = np.abs(target_old[indices, np.array(action)]-target[indices, np.array(action)])
+        self.memory.batch_update(tree_idx, absolute_errors)
 
         # Optimize the model
         self.optimizer.zero_grad()
@@ -192,11 +208,19 @@ class DQNAgent():
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
+
+
+        self.memory.batch_update(tree_idx, absolute_errors)
     
     def update_target(self,episodes):
         # Updates the target model to reflect the current policy model
          if episodes % TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
+
+    def remember(self, state, action, next_state, reward):
+        experience = state, action, reward, next_state
+        self.memory.store(experience)
+        
 
     #######################################
     # TODO: Internalized reward function  #
@@ -214,8 +238,18 @@ Transition = namedtuple('Transition',
 
 
 class ReplayMemory(object):
-    # Simple Replay Memory
+    # PER hyperparameters
+    PER_e = 0.01  # use to avoid some experiences to have 0 probability of being taken
+    PER_a = 0.6  # use to make a tradeoff between taking only exp with high priority and sampling randomly
+    PER_b = 0.4  # importance-sampling, from initial value increasing to 1
+
+    PER_b_increment_per_sampling = 0.001
+    
+    absolute_error_upper = 1.  # clipped abs error
+
+    # Simple Replay Memory (PER update)
     def __init__(self, capacity):
+        self.tree = SumTree(capacity) # PER sumtree
         self.capacity = capacity
         self.memory = []
         self.position = 0
@@ -227,8 +261,62 @@ class ReplayMemory(object):
         self.memory[self.position] = Transition(*args)
         self.position = (self.position + 1) % self.capacity
 
-    def sample(self, batch_size):
+    # Store a new experience in our tree.
+    # Each new experience will have a score of max_prority (it will be then improved when we use this exp to train our DDQN).
+    def store(self, experience):
+        # Find the max priority
+        max_priority = np.max(self.tree.tree[-self.tree.capacity:])
+
+        # If the max priority = 0 we can't put priority = 0 since this experience will never have a chance to be selected
+        # So we use a minimum priority
+        if max_priority == 0:
+            max_priority = self.absolute_error_upper
+
+        self.tree.add(max_priority, experience)   # set the max priority for new priority
+
+    # Old sample()
+    def trans_sample(self, batch_size):
         return random.sample(self.memory, batch_size)
+
+    # - First, we sample a minibatch of n size, the range [0, priority_total] into priority ranges.
+    # - Then a value is uniformly sampled from each range.
+    # - Then we search in the sumtree, for the experience where priority score correspond to sample values are retrieved from.
+    def sample(self, n):
+        # Create a minibatch array that will contains the minibatch
+        minibatch = []
+
+        b_idx = np.empty((n,), dtype=np.int32)
+
+        # Calculate the priority segment
+        # divide the Range[0, ptotal] into n ranges
+        priority_segment = self.tree.total_priority / n       # priority segment
+
+        for i in range(n):
+            # A value is uniformly sample from each range
+            a, b = priority_segment * i, priority_segment * (i + 1)
+            value = np.random.uniform(a, b)
+
+            # Experience that correspond to each value is retrieved
+            index, priority, data = self.tree.get_leaf(value)
+
+            b_idx[i]= index
+            print()
+            minibatch.append([data[0],data[1],data[2],data[3],data[4]])
+
+        return b_idx, minibatch
+
+    # Update the priorities on the tree
+    def batch_update(self, tree_idx, abs_errors):
+        abs_errors += self.PER_e  # convert to abs and avoid 0
+        clipped_errors = np.minimum(abs_errors, self.absolute_error_upper)
+        ps = np.power(clipped_errors, self.PER_a)
+
+        for ti, p in zip(tree_idx, ps):
+            self.tree.update(ti, p)
+
+    def remember(self, state, action, reward, next_state, done):
+        experience = state, action, reward, next_state, done
+        self.memory.store()
 
     def __len__(self):
         return len(self.memory)
