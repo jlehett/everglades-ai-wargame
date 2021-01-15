@@ -73,12 +73,16 @@ ties = 0
 losses = 0
 score = 0
 current_eps = 0
+epsilonVals = []
 #########################
 
-## Training Loop
+#####################
+#   Training Loop   #
+#####################
 for i_episode in range(1, n_episodes+1):
-    
-    ## Game Loop
+    #################
+    #   Game Loop   #
+    #################
     done = 0
     observations = env.reset(
         players=players,
@@ -126,7 +130,9 @@ for i_episode in range(1, n_episodes+1):
         current_eps = players[0].eps_threshold
 
         #pdb.set_trace()
-
+    #####################
+    #   End Game Loop   #
+    #####################
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
@@ -143,6 +149,7 @@ for i_episode in range(1, n_episodes+1):
     #############################################
     scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
+    epsilonVals.append(current_eps)
     #############################################
 
     #################################
@@ -152,22 +159,51 @@ for i_episode in range(1, n_episodes+1):
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
-        short_term_wr = np.zeros((k,), dtype=int)
-        
+        short_term_wr = np.zeros((k,), dtype=int)   
     ################################
     env.close()
+    #########################
+    #   End Training Loop   #
+    #########################
+
 
 #####################
 # Plot final charts #
 #####################
 fig, (ax1, ax2) = plt.subplots(2)
+
+#########################
+#   Epsilon Plotting    #
+#########################
+par1 = ax1.twinx()
+par2 = ax2.twinx()
+#########################
+
+######################
+#   Cumulative Plot  #
+######################
 ax1.set_ylim([0.0,1.0])
-ax2.set_ylim([0.0,1.0])
 fig.suptitle('Win rates')
 ax1.plot(np.arange(1, n_episodes+1),scores)
 ax1.set_ylabel('Cumulative win rate')
+ax1.yaxis.label.set_color('blue')
+par1.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
+par1.set_ylabel('Epsilon')
+par1.yaxis.label.set_color('green')
+#######################
+
+##################################
+#   Average Per K Episodes Plot  #
+##################################
+ax2.set_ylim([0.0,1.0])
+par2.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
+par2.set_ylabel('Epsilon')
+par2.yaxis.label.set_color('green')
 ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
 ax2.set_ylabel('Average win rate')
+ax2.yaxis.label.set_color('blue')
 ax2.set_xlabel('Episode #')
 plt.show()
-#####################
+#############################
+
+#########
