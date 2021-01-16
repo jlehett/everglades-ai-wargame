@@ -13,3 +13,13 @@
 # Ignore specific game telemetry directories
 **/game_telemetry/**
 **/Telemetry/**
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+
+# Ignore performance graph images
+/performance.png
+=======
+.vscode/settings.json
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
