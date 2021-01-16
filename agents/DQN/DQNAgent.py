@@ -159,11 +159,11 @@ class DQNAgent():
         #if len(self.memory) < BATCH_SIZE:
             #return
     
-        tree_idx, batch = self.memory.sample(BATCH_SIZE)
+        tree_idx, transitions = self.memory.sample(BATCH_SIZE)
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
-        #batch = Transition(*zip(*transitions))
+        batch = Transition(*zip(*transitions))
 
         
         next_state_tensor = torch.from_numpy(np.asarray(batch.next_state))
@@ -174,6 +174,7 @@ class DQNAgent():
         # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                             batch.next_state)), device=device, dtype=torch.bool)
+        print(non_final_mask.shape)
         non_final_next_states = next_state_tensor
         state_batch = state_tensor
         action_batch = action_tensor
@@ -191,12 +192,14 @@ class DQNAgent():
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
+        print(self.target_net(non_final_next_states).max(1)[0].shape)
         next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+        
         # PER
         indices = np.arange(self.batch_size, dtype=np.int32)
         absolute_errors = np.abs(target_old[indices, np.array(action)]-target[indices, np.array(action)])
