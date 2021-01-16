@@ -118,7 +118,8 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
         reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
-        players[0].memory.push(prev_observation,actions[0],observations[0],reward[0])
+        #players[0].memory.push(prev_observation,actions[0],observations[0],reward[0])
+        players[0].remember(prev_observation,actions[0],observations[0],reward[0])
         players[0].optimize_model()
         players[0].update_target(i_episode)
         #########################
