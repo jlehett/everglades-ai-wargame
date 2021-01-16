@@ -196,7 +196,11 @@ class DQNAgent():
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
         next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
-        #print(next_state_values)
+        
+        # Testing: reshaping
+        #print(next_state_values.size())
+        #torch.reshape(next_state_values, (16, 16))
+        #print(next_state_values.size())
 
         # distribution of next_state_values, and next_state_value_mean
         #next_state_values_mean = torch.sum(next_state_values * self.value_range.view(1, 1, -1), dim=2) # (m, N_ACTIONS)
