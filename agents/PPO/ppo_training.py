@@ -63,7 +63,6 @@ short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
 losses = 0
 score = 0
-current_eps = 0
 #########################
 
 ## Training Loop
@@ -108,11 +107,8 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
-        reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
         players[0].optimize_model()
         #########################
-
-        current_eps = players[0].eps_threshold
 
         #pdb.set_trace()
 
@@ -137,7 +133,7 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode,current_wr,score,losses,current_eps, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {}\n'.format(i_episode, current_wr, score, losses, ties), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
