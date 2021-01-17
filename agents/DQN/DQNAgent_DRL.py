@@ -30,6 +30,9 @@ EPS_DECAY = 0.00005
 TARGET_UPDATE = 10
 steps_done = 0
 
+# Num of actions is same as action_space
+N_ACTIONS = 7
+
 # Distributional RL variables
 N_ATOM = 51
 V_MIN = -5.
@@ -185,8 +188,8 @@ class DQNAgent():
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
         state_action_values = self.policy_net(state_batch)
-        mb_size = state_action_values.size(0)
-        #state_action_values = torch.stack([state_action_values[i].index_select(0, action_batch[i]) for i in range(mb_size)]).squeeze(1) 
+        #BATCH_SIZE = state_action_values.size(0)
+        #state_action_values = torch.stack([state_action_values[i].index_select(0, action_batch[i]) for i in range(BATCH_SIZE)]).squeeze(1) 
         #state_action_values = torch.gather(state_action_values,1.0, action_batch)
 
         # Compute V(s_{t+1}) for all next states.
@@ -195,24 +198,23 @@ class DQNAgent():
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
-        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
-        
+        next_state_values[non_final_mask] = self.target_net(non_final_next_states).detach()
+        # next value mean
+        next_state_values_mean = torch.sum(next_state_values * self.value_range.view(1, 1, -1), dim=2) # (m, N_ACTIONS)
+        best_actions = next_state_values_mean.argmax(dim=1) # (m)
+        next_state_values = torch.stack([next_state_values[i].index_select(0, best_actions[i]) for i in range(BATCH_SIZE)]).squeeze(1) 
+        next_state_values = next_state_values.data.cpu().numpy() # (m, N_ATOM)
+
         # Testing: reshaping
         #print(next_state_values.size())
         #torch.reshape(next_state_values, (16, 16))
-        #print(next_state_values.size())
-
-        # distribution of next_state_values, and next_state_value_mean
-        #next_state_values_mean = torch.sum(next_state_values * self.value_range.view(1, 1, -1), dim=2) # (m, N_ACTIONS)
-        #best_actions = next_state_values_mean.argmax(dim=1) # (m)
-        #print(best_actions)
-        #next_state_values = torch.stack([next_state_values[i].index_select(0, best_actions[i]) for i in range(mb_size)]).squeeze(1) 
+        #print(next_state_values.size()) 
 
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # target distribution
-        q_target = np.zeros((mb_size, N_ATOM)) # (m, N_ATOM)
+        q_target = np.zeros((BATCH_SIZE, N_ATOM)) # (m, N_ATOM)
 
         # categorical projection
         '''
@@ -234,7 +236,7 @@ class DQNAgent():
         #print(next_v_pos)
         #print(next_v_range)
         # we didn't vectorize the computation of target assignment.
-        for i in range(mb_size):
+        for i in range(BATCH_SIZE):
             for j in range(N_ATOM):
                 # calc prob mass of relative position weighted with distance
                 q_target[i, lb[i,j]] += (next_state_values * (ub - next_v_pos))[i,j]
@@ -324,7 +326,7 @@ class QNetwork(nn.Module):
         #############################################################################################
 
         self.fc3 = nn.Linear(fc2_unit, fc3_unit)
-        self.fc4 = nn.Linear(fc3_unit, self.action_size)
+        self.fc4 = nn.Linear(fc3_unit, self.action_size * N_ATOM)
 
         #############################################################################################
 
@@ -336,7 +338,7 @@ class QNetwork(nn.Module):
         #self.fc3_adv = nn.Linear(fc2_unit,fc3_unit)
         #self.fc3_val = nn.Linear(fc2_unit,fc3_unit)
 
-        #self.fc4_adv = nn.Linear(fc3_unit,self.action_size)
+        #self.fc4_adv = nn.Linear(fc3_unit,self.action_size*N_ATOM)
         #self.fc4_val = nn.Linear(fc3_unit,1)
 
         ##############################################################################################
@@ -377,7 +379,10 @@ class QNetwork(nn.Module):
 
         #advAverage = adv.mean()
         #x = val + adv - advAverage
-
+        
         ##############################################################################################
+
+        # note that output is prob mass of value distribution
+        x = F.softmax(self.fc4(x).view(BATCH_SIZE, self.action_size, N_ATOM), dim=2)
 
         return x
