@@ -174,7 +174,7 @@ class DQNAgent():
         # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                             batch.next_state)), device=device, dtype=torch.bool)
-        print(non_final_mask.shape)
+
         non_final_next_states = next_state_tensor
         state_batch = state_tensor
         action_batch = action_tensor
@@ -192,17 +192,19 @@ class DQNAgent():
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
-        print(self.target_net(non_final_next_states).max(1)[0].shape)
+        
         next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+        hold = state_action_values.max(1)[0].detach()
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-        
+
         # PER
-        indices = np.arange(self.batch_size, dtype=np.int32)
-        absolute_errors = np.abs(target_old[indices, np.array(action)]-target[indices, np.array(action)])
+        indices = np.arange(BATCH_SIZE, dtype=np.int32)
+        # absolute_errors = np.abs(state_action_values[indices, np.array(action_tensor)]-expected_state_action_values[indices, np.array(action_tensor)])
+        absolute_errors = np.abs(hold-expected_state_action_values)
         self.memory.batch_update(tree_idx, absolute_errors)
 
         # Optimize the model
@@ -221,7 +223,7 @@ class DQNAgent():
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def remember(self, state, action, next_state, reward):
-        experience = state, action, reward, next_state
+        experience = state, action, next_state, reward
         self.memory.store(experience)
         
 
@@ -317,9 +319,7 @@ class ReplayMemory(object):
         for ti, p in zip(tree_idx, ps):
             self.tree.update(ti, p)
 
-    def remember(self, state, action, reward, next_state, done):
-        experience = state, action, reward, next_state, done
-        self.memory.store()
+
 
     def __len__(self):
         return len(self.memory)
