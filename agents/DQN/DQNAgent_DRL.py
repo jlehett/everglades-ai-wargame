@@ -115,21 +115,23 @@ class DQNAgent():
 
                 # Get the action_output from network and reshape to 2D tensor
                 action_hold = self.policy_net(obs)
-                action_hold = torch.reshape(action_hold, (12,11))
-
+                action_hold = torch.reshape(action_hold, (12,11, N_ATOM))
+                #action_hold = torch.reshape(action_hold, (12,11))
+                
                 # Initialize unit, node and q-value arrays
                 action_units = np.zeros(7)
                 action_nodes = np.zeros(7)
                 action_qs = np.zeros(7)
 
                 # Unravel the output tensor into two size 7 arrays
+                # Note: Might need to add another loop in between j and k to loop in range(N_ATOM)
                 for i in range(12):
                     for j in range(11):
                         for k in range(7):
                             # Get largest q-value actions
                             # Discard if lower than another action
-                            if action_hold[i,j] > action_qs[k]:
-                                action_qs[k] = action_hold[i,j]
+                            if action_hold[i,j,0] > action_qs[k]:
+                                action_qs[k] = action_hold[i,j,0]
                                 action_units[k] = i
                                 action_nodes[k] = j
                                 break
@@ -383,6 +385,6 @@ class QNetwork(nn.Module):
         ##############################################################################################
 
         # note that output is prob mass of value distribution
-        x = F.softmax(self.fc4(x).view(BATCH_SIZE, self.action_size, N_ATOM), dim=2)
+        x = F.softmax(x.view(self.action_size, N_ATOM), dim=1)
 
         return x
