@@ -11,7 +11,7 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.Multi_Step_Learning.DQNAgent import DQNAgent
+from agents.Minimized.DQNAgent import DQNAgent
 
 #from everglades-server import generate_map
 
@@ -49,7 +49,11 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space, 0, map_name)
+players[0] = DQNAgent(
+    player_num=0,
+    map_name=map_name,
+    epsilon=0.95,
+)
 names[0] = "DQN Agent"
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
 names[1] = agent1_class.__name__
@@ -94,12 +98,6 @@ for i_episode in range(1, n_episodes+1):
         if i_episode % 5 == 0:
             env.render()
 
-        ### Removed to save processing power
-        # Print statements were taking forever
-        #if debug:
-        #    env.game.debug_state()
-        ###
-
         # Get actions for each player
         for pid in players:
             actions[pid] = players[pid].get_action( observations[pid] )
@@ -109,22 +107,14 @@ for i_episode in range(1, n_episodes+1):
 
         # Update env
         observations, reward, done, info = env.step(actions)
-        
-        ### Debug reward values
-        #print("Reward: {}", reward)
-        ###
 
         #########################
         # Handle agent update   #
         #########################
-        reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
-        players[0].remember_game_state(prev_observation, observations[0], actions[0], reward[0])
         players[0].optimize_model()
         #########################
 
-        current_eps = players[0].eps_threshold
-
-        #pdb.set_trace()
+        current_eps = players[0].epsilon
 
 
     ################################
