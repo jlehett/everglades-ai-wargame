@@ -117,6 +117,7 @@ class DQNAgent():
                 action_hold = self.policy_net(obs)
                 action_hold = torch.reshape(action_hold, (12,11, N_ATOM))
                 #action_hold = torch.reshape(action_hold, (12,11))
+                print(action_hold.size())
                 
                 # Initialize unit, node and q-value arrays
                 action_units = np.zeros(7)
@@ -127,14 +128,15 @@ class DQNAgent():
                 # Note: Might need to add another loop in between j and k to loop in range(N_ATOM)
                 for i in range(12):
                     for j in range(11):
-                        for k in range(7):
-                            # Get largest q-value actions
-                            # Discard if lower than another action
-                            if action_hold[i,j,0] > action_qs[k]:
-                                action_qs[k] = action_hold[i,j,0]
-                                action_units[k] = i
-                                action_nodes[k] = j
-                                break
+                        for l in range(N_ATOM):
+                            for k in range(7):
+                                # Get largest q-value actions
+                                # Discard if lower than another action
+                                if action_hold[i,j,l] > action_qs[k]:
+                                    action_qs[k] = action_hold[i,j,l]
+                                    action_units[k] = i
+                                    action_nodes[k] = j
+                                    break
                 
                 action[:, 0] = action_units
                 action[:, 1] = action_nodes
@@ -383,8 +385,14 @@ class QNetwork(nn.Module):
         #x = val + adv - advAverage
         
         ##############################################################################################
-
+        print(x.size())
         # note that output is prob mass of value distribution
-        x = F.softmax(x.view(self.action_size, N_ATOM), dim=1)
+        if x.size() == torch.Size([6732]):
+            x = (x.view(self.action_size, N_ATOM))
+            x = F.softmax(x, dim=1)
+        else:
+            x = (x.view(BATCH_SIZE, self.action_size, N_ATOM))
+            x = F.softmax(x, dim=2)
+        #x = F.softmax(x.view(self.action_size, N_ATOM), dim=1)
 
         return x
