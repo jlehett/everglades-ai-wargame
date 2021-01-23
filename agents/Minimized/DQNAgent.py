@@ -22,6 +22,8 @@ MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.999 # The amount to discount the future rewards by
 N_STEP = 16 # The number of steps to use in multi-step learning
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 class DQNAgent():
     def __init__(
         self,
@@ -120,6 +122,21 @@ class DQNAgent():
         actions[:] = [decision['best_action'] for decision in sorted_swarm_decisions[:7]]
         return actions
 
+    def get_allies_on_node_data(self, obs):
+        """
+        Create a numpy array to store the number of allies on each node.
+
+        @param obs The observation array consisting of all 105 values passed by the Everglades environment
+        @returns A numpy array of size [NUM_NODES] with values of the number of ally swarms on each node
+        """
+        allies_on_node = np.zeros(self.num_nodes)
+        for swarm_number in range(NUM_GROUPS):
+            swarm_in_transit = obs[48+5*swarm_number]
+            if swarm_in_transit == 0:
+                swarm_node_loc = int(obs[45+5*swarm_number] - 1)
+                allies_on_node[swarm_node_loc-1] += 1
+        return allies_on_node
+
     def get_all_swarm_decisions(self, obs):
         """
         We want to obtain and return all swarm thought processes.
@@ -132,12 +149,7 @@ class DQNAgent():
         # We want to avoid creating the same computationally-expensive pre-processed
         # data multiple times, so we should calculate the number of ally nodes on each
         # node in the map here
-        allies_on_node = np.zeros(self.num_nodes)
-        for swarm_number in range(NUM_GROUPS):
-            swarm_in_transit = obs[48+5*swarm_number]
-            if swarm_in_transit == 0:
-                swarm_node_loc = int(obs[45+5*swarm_number] - 1)
-                allies_on_node[swarm_node_loc-1] += 1
+        allies_on_node = self.get_allies_on_node_data(obs)
         # Iterate through all possible unit swarms, and have them each decide
         # which actions would be best for them to take
         for swarm_number in range(NUM_GROUPS):
@@ -220,14 +232,69 @@ class DQNAgent():
         @param [actions] The actions that were taken to move agent from previous_state to next_state
         @param [reward] The reward received by the agent for taking specified actions in the previous_state
         """
-        self.NStepModule.trackGameState(previous_state, actions, reward)
+        # -- We need to convert previous_state to the per-swarm's previous states --
+        per_swarm_previous_state = np.zeros((NUM_GROUPS, INPUT_SIZE))
+        # We can compute the number of allies on each node outside of the for loop
+        previous_state_allies_on_node = self.get_allies_on_node_data(previous_state)
+        for swarm_num in range(NUM_GROUPS):
+            per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
+        # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
+        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward)
 
     def optimize_model(self):
         """
         Optimize the network via a training function. Will return immediately
         without training if there is not enough memory in the experience replay.
         """
-        pass
+        # If the NStepModule's experience replay isn't large enough, we should bail out.
+        # Otherwise, we can grab sample data from the replay memory.
+        if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
+            return
+        transitions = self.NStepModule.sampleReplayMemory(BATCH_SIZE)
+
+        # Create the batch of data to use
+        batch = Transition(*zip(*transitions))
+        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
+        state_swarms_batch = torch.from_numpy(np.asarray(batch.state_swarms))
+        action_batch = torch.from_numpy(np.asarray(batch.action))
+        reward_batch = torch.from_numpy(np.asarray(batch.reward).reshape((BATCH_SIZE, 1)))
+        # Compute a mask of non-final states and concatenate the batch elements
+        non_final_mask = batch.hitsDone
+        non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask]
+
+        # We should compute the losses per-swarm to support the per-swarm architecture
+        for swarm_num in range(NUM_GROUPS):
+            # Compute the swarm's predicted qs for the current state
+            state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, self.num_nodes), device=device)
+            state_swarms_predicted_qs_batch[:, :] = self.policy_net(state_swarms_batch[:, swarm_num, :])
+            # (BATCH_SIZE, NUM_NODES)
+            # Compute the swarm's future value for next states
+            next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, self.num_nodes), device=device)
+            next_state_swarms_predicted_qs_batch[non_final_mask, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
+            # (BATCH_SIZE, NUM_NODES)
+            # Limit future value to best q value for each swarm
+            next_state_swarms_predicted_qs_batch = next_state_swarms_predicted_qs_batch.numpy()
+            max_next_state_swarms_predicted_qs_batch = np.amax(next_state_swarms_predicted_qs_batch, axis=1)
+            # Set the state_swarms_predicted_qs_batch
+
+        # We need to compute the predicted q values for each swarm for all states
+        state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, NUM_GROUPS, self.num_nodes), device=device)
+        for swarm_num in range(NUM_GROUPS):
+            state_swarms_predicted_qs_batch[:, swarm_num, :] = self.policy_net(state_swarms_batch[:, swarm_num, :])
+
+        # We need to compute the future value of all next states
+        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, NUM_GROUPS, self.num_nodes), device=device)
+        for swarm_num in range(NUM_GROUPS):
+            next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
+
+        # Limit future value to best q value for each swarm
+        next_state_swarms_predicted_qs_batch = next_state_swarms_predicted_qs_batch.numpy()
+        max_next_state_swarms_predicted_qs_batch = np.amax(next_state_swarms_predicted_qs_batch, axis=2)
+        max_next_state_predicted_qs_batch = np.amax(max_next_state_swarms_predicted_qs_batch, axis=1)
+
+        # Construct the expected Q values
+        expected_state_swarm_values = 
+
 
     def end_of_episode(self, episodes):
         """
@@ -246,4 +313,4 @@ class DQNAgent():
 ### DEFINE REPLAY MEMORY TRANSITION ###
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward', 'hitsDone'))
+                        ('state_swarms', 'action', 'next_state_swarms', 'reward', 'hitsDone'))

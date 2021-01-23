@@ -2,7 +2,7 @@ from collections import namedtuple, deque
 import random
 import numpy as np
 
-OBSERVATION_SPACE = 105
+OBSERVATION_SPACE = (12, 47)
 
 """
     The NStepModule will contain necessary util functions for implementing N-Step Learning
@@ -34,15 +34,15 @@ class NStepModule:
         """
         hitsDone = False
         for step_num, game_step in enumerate(self.game_memory):
-            previous_state = game_step[0]
+            previous_state_swarms = game_step[0]
             actions = self.game_memory[step_num][1]
             actualSummedReward = self.getSummedReward(step_num)
-            next_state = np.zeros(OBSERVATION_SPACE)
+            next_state_swarms = np.zeros(OBSERVATION_SPACE)
             if step_num + self.n < len(self.game_memory):
-                next_state = self.game_memory[step_num + self.n][0]
+                next_state_swarms = self.game_memory[step_num + self.n][0]
             else:
                 hitsDone = True
-            self.replay_memory.push(previous_state, actions, next_state, actualSummedReward, hitsDone)
+            self.replay_memory.push(previous_state_swarms, actions, next_state_swarms, actualSummedReward, hitsDone)
         # Reset the game memory
         self.resetGameMemory()
 
@@ -91,7 +91,7 @@ class NStepReplayMemory(object):
         self.memory = []
         self.position = 0
         self.Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward', 'hitsDone'))
+                        ('state_swarms', 'action', 'next_state_swarms', 'reward', 'hitsDone'))
 
     def push(self, *args):
         if len(self.memory) < self.capacity:
