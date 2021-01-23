@@ -276,24 +276,7 @@ class DQNAgent():
             next_state_swarms_predicted_qs_batch = next_state_swarms_predicted_qs_batch.numpy()
             max_next_state_swarms_predicted_qs_batch = np.amax(next_state_swarms_predicted_qs_batch, axis=1)
             # Set the state_swarms_predicted_qs_batch
-
-        # We need to compute the predicted q values for each swarm for all states
-        state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, NUM_GROUPS, self.num_nodes), device=device)
-        for swarm_num in range(NUM_GROUPS):
-            state_swarms_predicted_qs_batch[:, swarm_num, :] = self.policy_net(state_swarms_batch[:, swarm_num, :])
-
-        # We need to compute the future value of all next states
-        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, NUM_GROUPS, self.num_nodes), device=device)
-        for swarm_num in range(NUM_GROUPS):
-            next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
-
-        # Limit future value to best q value for each swarm
-        next_state_swarms_predicted_qs_batch = next_state_swarms_predicted_qs_batch.numpy()
-        max_next_state_swarms_predicted_qs_batch = np.amax(next_state_swarms_predicted_qs_batch, axis=2)
-        max_next_state_predicted_qs_batch = np.amax(max_next_state_swarms_predicted_qs_batch, axis=1)
-
-        # Construct the expected Q values
-        expected_state_swarm_values = 
+            
 
 
     def end_of_episode(self, episodes):
