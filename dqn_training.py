@@ -111,6 +111,12 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
+        players[0].remember_game_state(
+            prev_observation,
+            observations[0],
+            actions[0],
+            reward[0]
+        )
         players[0].optimize_model()
         #########################
 

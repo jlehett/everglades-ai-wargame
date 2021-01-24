@@ -32,7 +32,7 @@ class NStepModule:
             Once a game has completed, we need to add all of the experience of the game to the
             NStepReplayMemory. Automatically resets the game memory.
         """
-        hitsDone = False
+        doesNotHitDone = True
         for step_num, game_step in enumerate(self.game_memory):
             previous_state_swarms = game_step[0]
             actions = self.game_memory[step_num][1]
@@ -41,8 +41,8 @@ class NStepModule:
             if step_num + self.n < len(self.game_memory):
                 next_state_swarms = self.game_memory[step_num + self.n][0]
             else:
-                hitsDone = True
-            self.replay_memory.push(previous_state_swarms, actions, next_state_swarms, actualSummedReward, hitsDone)
+                doesNotHitDone = False
+            self.replay_memory.push(previous_state_swarms, actions, next_state_swarms, actualSummedReward, doesNotHitDone)
         # Reset the game memory
         self.resetGameMemory()
 
@@ -51,6 +51,7 @@ class NStepModule:
             @Public
             Returns true if we can start training or false otherwise.
         """
+        print(len(self.replay_memory))
         return len(self.replay_memory) >= batch_size
 
     def sampleReplayMemory(self, batch_size):
@@ -91,7 +92,7 @@ class NStepReplayMemory(object):
         self.memory = []
         self.position = 0
         self.Transition = namedtuple('Transition',
-                        ('state_swarms', 'action', 'next_state_swarms', 'reward', 'hitsDone'))
+                        ('state_swarms', 'action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
 
     def push(self, *args):
         if len(self.memory) < self.capacity:
