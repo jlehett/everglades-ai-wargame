@@ -126,6 +126,15 @@ class DQNAgent():
     ):
         # Add the new experience to the NStepModule for experience replay
         self.NStepModule.trackGameState(previous_state, actions, reward)
+    
+    def extract_tensors(self, batch, transitions):
+        t0 = torch.from_numpy(np.asarray(batch.next_state))
+        t1 = torch.from_numpy(np.asarray(batch.state))
+        t2 = torch.from_numpy(np.asarray(batch.action))
+        t3 = torch.from_numpy(np.asarray(batch.reward))
+        t4 = torch.from_numpy(np.asarray(batch.next_state))
+
+        return (t0,t1,t2,t3,t4)
 
     def optimize_model(self):
         # If the NStepModule's experience replay isn't large enough, we should bail out.
@@ -137,43 +146,56 @@ class DQNAgent():
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
+
+        ## DM EDIT ##
         batch = Transition(*zip(*transitions))
-        nth_next_state_tensor = torch.from_numpy(np.asarray(batch.next_state))
-        state_tensor = torch.from_numpy(np.asarray(batch.state))
-        action_tensor = torch.from_numpy(np.asarray(batch.action))
-        reward_tensor = torch.from_numpy(np.asarray(batch.reward))
-        reward_tensor = torch.from_numpy(np.asarray(batch.reward).reshape((BATCH_SIZE, 1)))
+        # nth_next_state_tensor = torch.from_numpy(np.asarray(batch.next_state))
+        # state_tensor = torch.from_numpy(np.asarray(batch.state))
+        # action_tensor = torch.from_numpy(np.asarray(batch.action))
+        # reward_tensor = torch.from_numpy(np.asarray(batch.reward))
+        # reward_tensor = torch.from_numpy(np.asarray(batch.reward).reshape((BATCH_SIZE, 1)))
+        # nth_next_state_tensor = torch.cat(batch.next_state)
+        nth_next_state_tensor, states, actions, rewards, next_states = self.extract_tensors(batch, transitions)
+
         # Compute a mask of non-final states and concatenate the batch elements
         # (a final state would've been the one after which simulation ended)
         non_final_mask = batch.hitsDone
         #print(non_final_mask)
         non_final_next_states = nth_next_state_tensor[non_final_mask]
-        state_batch = state_tensor
-        action_batch = action_tensor
-        reward_batch = reward_tensor
+
+        ## DM EDIT ##
+        # state_batch = state_tensor
+        # action_batch = action_tensor
+        # reward_batch = reward_tensor
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
-        state_action_values = self.policy_net(state_batch)
-        #state_action_values = torch.gather(state_action_values,1.0, action_batch)
+        # state_action_values = self.policy_net(state_batch)
+        # state_action_values = torch.gather(state_action_values,1.0, action_batch)
 
+        ## DM EDIT ##
         # Compute V(s_{t+1}) for all next states
-        next_state_values = torch.zeros((BATCH_SIZE, self.num_groups*self.num_nodes), device=device)
-        next_state_values[non_final_mask] = self.target_net(non_final_next_states).detach()
+        # next_state_values = torch.zeros((BATCH_SIZE, self.num_groups*self.num_nodes), device=device)
+        # next_state_values[non_final_mask] = self.target_net(non_final_next_states).detach()
         # Construct the appropriate training data
-        next_state_values = next_state_values.numpy()
-        max_next_state_value_per_batch = np.amax(next_state_values, axis=1)
-        for i in range(next_state_values.shape[0]):
-            next_state_values[i, :] = max_next_state_value_per_batch[i]
-        next_state_values = torch.from_numpy(next_state_values)
+        # next_state_values = next_state_values.numpy()
+        # max_next_state_value_per_batch = np.amax(next_state_values, axis=1)
+        # for i in range(next_state_values.shape[0]):
+            # next_state_values[i, :] = max_next_state_value_per_batch[i]
+        # next_state_values = torch.from_numpy(next_state_values)
 
         # Compute the expected Q values
-        expected_state_action_values = (next_state_values * (GAMMA ** N_STEP)) + reward_batch
-        expected_state_action_values = expected_state_action_values.type(torch.FloatTensor)
+        # xpected_state_action_values = (next_state_values * (GAMMA ** N_STEP)) + reward_batch
+        # expected_state_action_values = expected_state_action_values.type(torch.FloatTensor)
+        current_q_values = QValues.get_current(self.policy_net, states, actions)
+        next_q_values = QValues.get_next(self.target_net, next_states)
+        target_q_values = (next_q_values * GAMMA) + rewards
 
+        ## DM EDIT ##
         # Compute Huber loss
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
+        # loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
+        loss = F.mse_loss(current_q_values, target_q_values.unsqueeze(-1))
 
         # Optimize the model
         self.optimizer.zero_grad()
@@ -202,6 +224,23 @@ class DQNAgent():
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'hitsDone'))
+
+class QValues():
+    @staticmethod
+    def get_current(policy_net, states, actions):
+        print(actions)
+        return policy_net(states).gather(dim=1, index=actions) #.unsqueeze(-1))
+
+    @staticmethod        
+    def get_next(target_net, next_states):                
+        final_state_locations = next_states.flatten(start_dim=1) \
+            .max(dim=1)[0].eq(0).type(torch.bool)
+        non_final_state_locations = (final_state_locations == False)
+        non_final_states = next_states[non_final_state_locations]
+        batch_size = next_states.shape[0]
+        values = torch.zeros(batch_size).to(QValues.device)
+        values[non_final_state_locations] = target_net(non_final_states).max(dim=1)[0].detach()
+        return values
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
