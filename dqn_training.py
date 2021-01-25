@@ -64,7 +64,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 800
+n_episodes = 80000
 
 #########################
 # Statistic variables   #
@@ -107,6 +107,8 @@ for i_episode in range(1, n_episodes+1):
 
         # Update env
         observations, reward, done, info = env.step(actions)
+
+        reward[0] -= reward[1]
 
         #########################
         # Handle agent update   #

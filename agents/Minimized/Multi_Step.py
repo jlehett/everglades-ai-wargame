@@ -2,7 +2,7 @@ from collections import namedtuple, deque
 import random
 import numpy as np
 
-OBSERVATION_SPACE = (12, 47)
+OBSERVATION_SPACE = (12, 59)
 
 """
     The NStepModule will contain necessary util functions for implementing N-Step Learning
@@ -19,12 +19,16 @@ class NStepModule:
         # The number of steps to use in n-step learning
         self.n = n
     
-    def trackGameState(self, state, action, reward):
+    def trackGameState(self, swarm_states, action, reward):
         """
             @Public
-            Add the game state for the current time step to the game memory
+            Add the swarm game states for the current time step to the game memory
+
+            @param swarm_states Array of each swarm's observations indexed by swarm number
+            @param action 7x2 action array composed of the 7 actions taken, each represented by the tuple (swarm_number 0-indexed, node_number 1-indexed)
+            @param reward Float value containing the reward received by the agent for taking specified actions at the current step
         """
-        self.game_memory.append((state, action, reward))
+        self.game_memory.append((swarm_states, action, reward))
 
     def addGameToReplayMemory(self):
         """
@@ -42,7 +46,18 @@ class NStepModule:
                 next_state_swarms = self.game_memory[step_num + self.n][0]
             else:
                 doesNotHitDone = False
-            self.replay_memory.push(previous_state_swarms, actions, next_state_swarms, actualSummedReward, doesNotHitDone)
+            # Add per-swarm observations if action was taken by swarm at this state
+            for swarm_num, swarm_state in enumerate(previous_state_swarms):
+                # Determine the node the swarm moved to this step
+                node_moved_to = -1
+                for action in actions:
+                    if action[0] == swarm_num:
+                        node_moved_to = action[1] - 1
+                        break
+                # If the node_moved_to is -1, the swarm did not take an action;
+                # If the swarm DID take an action, add it to replay memory
+                if node_moved_to != -1:
+                    self.replay_memory.push(swarm_state, int(node_moved_to), next_state_swarms, actualSummedReward, doesNotHitDone)
         # Reset the game memory
         self.resetGameMemory()
 
@@ -51,7 +66,6 @@ class NStepModule:
             @Public
             Returns true if we can start training or false otherwise.
         """
-        print(len(self.replay_memory))
         return len(self.replay_memory) >= batch_size
 
     def sampleReplayMemory(self, batch_size):
@@ -92,7 +106,7 @@ class NStepReplayMemory(object):
         self.memory = []
         self.position = 0
         self.Transition = namedtuple('Transition',
-                        ('state_swarms', 'action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
+                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
 
     def push(self, *args):
         if len(self.memory) < self.capacity:

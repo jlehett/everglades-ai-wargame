@@ -12,16 +12,17 @@ NUM_GROUPS = 12 # The number of unit groups in the Everglades environment for th
 NUM_ACTIONS = 7 # The number of actions an agent can take in a single turn
 EVERGLADES_ACTION_SIZE = (NUM_ACTIONS, 2) # The action shape in an Everglades-readable format
 
-INPUT_SIZE = 47 # This is a custom value defined when creating the minimized input
+INPUT_SIZE = 59 # This is a custom value defined when creating the minimized input
 OUTPUT_SIZE = 11 # This is the same as the number of nodes
-FC1_SIZE = 56 # Number of nodes in the first hidden layer
-FC2_SIZE = 56 # Number of nodes in the second hidden layer
+FC1_SIZE = 50 # Number of nodes in the first hidden layer
 
-BATCH_SIZE = 10 # The number of inputs to train on at one time
-TARGET_UPDATE = 4 # The number of episodes to wait until we update the target network
+BATCH_SIZE = 256 # The number of inputs to train on at one time
+TARGET_UPDATE = 1000 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.999 # The amount to discount the future rewards by
-N_STEP = 16 # The number of steps to use in multi-step learning
+LEARNING_RATE = 1e-8 # The learning rate to be used by the optimizer
+N_STEP = 10 # The number of steps to use in multi-step learning
+EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -48,8 +49,8 @@ class DQNAgent():
         self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
 
         # Set up the network
-        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, FC2_SIZE)
-        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, FC2_SIZE)
+        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
+        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
         # Load the policy network's values into the target network
         self.target_net.load_state_dict(self.policy_net.state_dict())
         # Prevent the target net from learning during training; only the policy
@@ -57,7 +58,7 @@ class DQNAgent():
         self.target_net.eval()
 
         # Set the optimizer to use in training the network
-        self.optimizer = optim.RMSprop(self.policy_net.parameters())
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
 
         # Set up the map data to use
         with open('./config/' + map_name) as fid:
@@ -198,13 +199,13 @@ class DQNAgent():
         # Initialize an empty numpy array to store the swarm's observations
         swarm_obs = np.zeros(INPUT_SIZE)
         # Add the current turn number to the array
-        swarm_obs[0] = obs[0]
+        swarm_obs[0] = obs[0] / 150.0
         # Add information on the control of each node on the map
-        swarm_obs[1:12] = obs[3:45:4]
+        swarm_obs[1:12] = obs[3:45:4] / 100.0
         # Add information on the number of enemy units on each node on the map
-        swarm_obs[12:23] = obs[4:45:4]
+        swarm_obs[12:23] = obs[4:45:4] / 100.0
         # Add information on the number of ally units on each node of the map
-        swarm_obs[23:34] = allies_on_node[:]
+        swarm_obs[23:34] = allies_on_node[:] / 12.0
         # Add information on the swarm's current node
         for node_num in range(self.num_nodes):
             if obs[45+5*swarm_number] == node_num + 1:
@@ -212,9 +213,11 @@ class DQNAgent():
             else:
                 swarm_obs[34+node_num] = 0
         # Add information on the swarm's total health
-        swarm_obs[45] = obs[47+5*swarm_number] * obs[49+5*swarm_number]
+        swarm_obs[45] = obs[47+5*swarm_number] * obs[49+5*swarm_number] / (1000.0)
         # Add information on whether the swarm is currently in transit
         swarm_obs[46] = obs[48+5*swarm_number]
+        # Add swarm number ID to the input
+        swarm_obs[47+swarm_number] = 1
         # Return the final swarm observation array
         return swarm_obs
 
@@ -240,7 +243,7 @@ class DQNAgent():
         for swarm_num in range(NUM_GROUPS):
             per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
-        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward)
+        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
 
     def optimize_model(self):
         """
@@ -256,50 +259,33 @@ class DQNAgent():
         # Create the batch of data to use
         batch = Transition(*zip(*transitions))
         nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
-        state_swarms_batch = torch.from_numpy(np.asarray(batch.state_swarms))
-        action_batch = torch.from_numpy(np.asarray(batch.action))
+        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs))
+        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1)
         reward_batch = torch.from_numpy(np.asarray(batch.reward))
         # Compute a mask of non-final states and concatenate the batch elements
         non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone))
         non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :]
 
-        # We should compute the losses per-swarm to support the per-swarm architecture
+        # Compute the swarm's predicted qs for the current state
+        state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
+
+        # Compute the swarm's future value for next states
+        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
         for swarm_num in range(NUM_GROUPS):
-            # Compute the swarm's predicted qs for the current state
-            state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, self.num_nodes), device=device)
-            state_swarms_predicted_qs_batch[:, :] = self.policy_net(state_swarms_batch[:, swarm_num, :])
-            # (BATCH_SIZE, NUM_NODES)
-            # Compute the swarm's future value for next states
-            next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, self.num_nodes), device=device)
-            next_state_swarms_predicted_qs_batch[non_final_mask, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
-            # (BATCH_SIZE, NUM_NODES)
-            # Limit future value to best q value for each swarm
-            next_state_swarms_predicted_qs_batch = next_state_swarms_predicted_qs_batch.squeeze()
-            max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=1)
-            # Compute the estimated future reward
-            estimated_future_reward = max_next_state_swarms_predicted_qs_batch * GAMMA ** N_STEP + reward_batch
-            # Create the expected rewards to compute a loss against the predicted rewards with
-            # TODO: UPDATE THIS BLOCK
-            predicted_rewards = []
-            expected_rewards = []
-            for batch_num in range(BATCH_SIZE):
-                for action in action_batch[batch_num]:
-                    if action[0] == swarm_num:
-                        action_taken = int(action[1]-1)
-                        predicted_rewards.append(np.asarray(state_swarms_predicted_qs_batch[batch_num, :].detach()))
-                        predicted_reward_copy = np.copy(predicted_rewards[-1])
-                        predicted_reward_copy[action_taken] = estimated_future_reward[batch_num]
-                        expected_rewards.append(predicted_reward_copy)
-            predicted_rewards = np.asarray(predicted_rewards)
-            expected_rewards = np.asarray(expected_rewards)
-            # Compute loss
-            loss = F.smooth_l1_loss(torch.from_numpy(predicted_rewards), torch.from_numpy(expected_rewards))
-            # Optimize the model
-            self.optimizer.zero_grad()
-            loss.backward()
-            for param in self.policy_net.parameters():
-                param.grad.data.clamp_(-1, 1)
-            self.optimizer.step()
+            next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
+        # Limit future value to the best q value for each swarm
+        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2)
+        max_next_state_predicted_q_batch = torch.amax(max_next_state_swarms_predicted_qs_batch, axis=1)
+        # Compute the estimated future reward
+        estimated_future_reward = max_next_state_predicted_q_batch * GAMMA ** N_STEP + reward_batch
+
+        # Compute the loss
+        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
+        self.optimizer.zero_grad()
+        loss.backward()
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
 
     def end_of_episode(self, episodes):
         """
@@ -313,9 +299,11 @@ class DQNAgent():
         # Update target network every UPDATE_TARGET_AFTER episodes
         if episodes % TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
+        # Decay epsilon
+        self.epsilon *= EPS_DECAY
 
 
 ### DEFINE REPLAY MEMORY TRANSITION ###
 
 Transition = namedtuple('Transition',
-                        ('state_swarms', 'action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
+                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
