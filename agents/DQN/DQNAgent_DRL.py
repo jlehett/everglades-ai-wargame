@@ -117,7 +117,7 @@ class DQNAgent():
                 action_hold = self.policy_net(obs)
                 action_hold = torch.reshape(action_hold, (12,11, N_ATOM))
                 #action_hold = torch.reshape(action_hold, (12,11))
-                print(action_hold.size())
+                #print(action_hold.size())
                 
                 # Initialize unit, node and q-value arrays
                 action_units = np.zeros(7)
@@ -192,8 +192,15 @@ class DQNAgent():
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
         state_action_values = self.policy_net(state_batch)
-        #BATCH_SIZE = state_action_values.size(0)
-        #state_action_values = torch.stack([state_action_values[i].index_select(0, action_batch[i]) for i in range(BATCH_SIZE)]).squeeze(1) 
+        mb_size = state_action_values.size(0)
+        print("action_batch[]:")
+        print(action_batch[0])
+        state_action_values = torch.stack([state_action_values[i].index_select(0, action_batch[i]) for i in range(mb_size)]).squeeze(1)
+        print("state_action_values size:")
+        print(state_action_values.size())
+        #mb_size = state_action_values.size(0)
+        #state_action_values = torch.stack([state_action_values[i].index_select(0, action_batch[i]) for i in range(mb_size]).squeeze(1) 
+        # (m, N_ATOM)
         #state_action_values = torch.gather(state_action_values,1.0, action_batch)
 
         # Compute V(s_{t+1}) for all next states.
@@ -201,21 +208,20 @@ class DQNAgent():
         # on the "older" target_net; selecting their best reward with max(1)[0].
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
-        next_state_values = torch.zeros(BATCH_SIZE, device=device)
-        next_state_values[non_final_mask] = self.target_net(non_final_next_states).detach()
+        next_state_values = torch.zeros((BATCH_SIZE, 132, N_ATOM), device=device)
+        next_state_values[done_batch] = self.target_net(non_final_next_states).detach()
         # next value mean
         next_state_values_mean = torch.sum(next_state_values * self.value_range.view(1, 1, -1), dim=2) # (m, N_ACTIONS)
         best_actions = next_state_values_mean.argmax(dim=1) # (m)
         next_state_values = torch.stack([next_state_values[i].index_select(0, best_actions[i]) for i in range(BATCH_SIZE)]).squeeze(1) 
         next_state_values = next_state_values.data.cpu().numpy() # (m, N_ATOM)
 
-        # Testing: reshaping
-        #print(next_state_values.size())
-        #torch.reshape(next_state_values, (16, 16))
-        #print(next_state_values.size()) 
-
         # Compute the expected Q values
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+        #expected_state_action_values = (next_state_values * GAMMA) + reward_batch.numpy()
+
+        # action value distribution prediction
+        #state_action_values = self.policy_net(state_batch) # (m, N_ACTIONS, N_ATOM)
+       
 
         # target distribution
         q_target = np.zeros((BATCH_SIZE, N_ATOM)) # (m, N_ATOM)
@@ -247,16 +253,17 @@ class DQNAgent():
                 q_target[i, ub[i,j]] += (next_state_values * (next_v_pos - lb))[i,j]
 
         q_target = torch.FloatTensor(q_target)
+        print("q_target size:")
+        print(q_target.size())
 
-        # Calculate Huber loss, dont reduce for importance weight
-        #loss = q_target * ( - torch.log(state_action_values + 1e-8)) # (m , N_ATOM)
-        #loss = torch.mean(loss)
+        # calc huber loss, dont reduce for importance weight
+        #loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+        loss = q_target * ( - torch.log(state_action_values + 1e-8)) # (m , N_ATOM)
+        loss = torch.mean(loss)
 
-        # Compute Huber loss
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-
-        #weight_batch = torch.Tensor(weight_batch)
-        #loss = torch.mean(weight_batch*loss)
+        # calc imported weight loss
+        weight_batch = torch.Tensor(weight_batch)
+        loss = torch.mean(weight_batch*loss)
 
         # Optimize the model
         self.optimizer.zero_grad()
