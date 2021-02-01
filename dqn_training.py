@@ -51,8 +51,7 @@ names = {}
 #################
 players[0] = DQNAgent(
     player_num=0,
-    map_name=map_name,
-    epsilon=0.95,
+    map_name=map_name
 )
 names[0] = "DQN Agent"
 players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
@@ -95,7 +94,7 @@ for i_episode in range(1, n_episodes+1):
     )
 
     while not done:
-        if i_episode % 5 == 0:
+        if i_episode % 5 == 0 or notplayers[0].training:
             env.render()
 
         # Get actions for each player
@@ -108,7 +107,8 @@ for i_episode in range(1, n_episodes+1):
         # Update env
         observations, reward, done, info = env.step(actions)
 
-        reward[0] -= reward[1]
+        if reward[0] < 0:
+            reward[0] = 0
 
         #########################
         # Handle agent update   #
@@ -150,7 +150,7 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode,current_wr,score,losses,current_eps, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, ties), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))

@@ -1,5 +1,5 @@
-from agents.Minimized.QNetwork import QNetwork
-from agents.Minimized.Multi_Step import NStepModule
+from agents.Blind.QNetwork import QNetwork
+from agents.Blind.Multi_Step import NStepModule
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -7,33 +7,22 @@ import json
 import random
 import numpy as np
 from collections import namedtuple
-import pickle
-import os
-
-TRAIN = True # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
-EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
-TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
-
-NETWORK_SAVE_NAME = 'agents/Minimized/PerSwarm' # The name to use in saving the trained agent
-NETWORK_LOAD_NAME = 'agents/Minimized/PerSwarm' # The name to use in loading a saved agent
-SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
 NUM_GROUPS = 12 # The number of unit groups in the Everglades environment for the agent
 NUM_ACTIONS = 7 # The number of actions an agent can take in a single turn
 EVERGLADES_ACTION_SIZE = (NUM_ACTIONS, 2) # The action shape in an Everglades-readable format
 
-INPUT_SIZE = 59 # This is a custom value defined when creating the minimized input
+INPUT_SIZE = 24 # This is a custom value defined when creating the minimized input
 OUTPUT_SIZE = 11 # This is the same as the number of nodes
-FC1_SIZE = 100 # Number of nodes in the first hidden layer
-FC2_SIZE = 100 # Number of nodes in the second hidden layer
+FC1_SIZE = 10
 
 BATCH_SIZE = 256 # The number of inputs to train on at one time
-TARGET_UPDATE = 10 # The number of episodes to wait until we update the target network
+TARGET_UPDATE = 1000 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.999 # The amount to discount the future rewards by
-LEARNING_RATE = 1e-3 # The learning rate to be used by the optimizer
-N_STEP = 50 # The number of steps to use in multi-step learning
-EPS_DECAY = 0.9995 # The rate at which epsilon decays at the end of each episode
+LEARNING_RATE = 1e-4 # The learning rate to be used by the optimizer
+N_STEP = 40 # The number of steps to use in multi-step learning
+EPS_DECAY = 0.99 # The rate at which epsilon decays at the end of each episode
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -42,6 +31,7 @@ class DQNAgent():
         self,
         player_num,
         map_name,
+        epsilon
     ):
         """
         Initialize a DQNAgent that will be used to play the Everglades game.
@@ -50,33 +40,17 @@ class DQNAgent():
 
         @param player_num The player number of the agent in the Everglades environment
         @param map_name The name of the map file to load in
+        @param epsilon The epsilon value the agent should begin at
         """
         # Store variables
-        if TRAIN:
-            self.epsilon = TRAIN_EPSILON_START
-        else:
-            self.epsilon = EVALUATE_EPSILON
-        self.previous_episodes = 0
-        self.training = TRAIN
+        self.epsilon = epsilon
 
         # Create the NStepModule
         self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
 
         # Set up the network
-        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, FC2_SIZE)
-        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, FC2_SIZE)
-
-        # If a save file is specified and the file exists, load the save file
-        if NETWORK_LOAD_NAME and os.path.exists(NETWORK_LOAD_NAME + '.pickle'):
-            save_file = open(NETWORK_LOAD_NAME + '.pickle', 'rb')
-            save_file_data = pickle.load(save_file)
-            self.policy_net.load_state_dict(save_file_data.get('state_dict'))
-            if TRAIN:
-                self.epsilon = save_file_data.get('epsilon')
-                self.previous_episodes = save_file_data.get('episodes')
-            save_file.close()
-            print('Loaded Saved Network:', NETWORK_LOAD_NAME)
-
+        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
+        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
         # Load the policy network's values into the target network
         self.target_net.load_state_dict(self.policy_net.state_dict())
         # Prevent the target net from learning during training; only the policy
@@ -226,24 +200,14 @@ class DQNAgent():
         swarm_obs = np.zeros(INPUT_SIZE)
         # Add the current turn number to the array
         swarm_obs[0] = obs[0] / 150.0
-        # Add information on the control of each node on the map
-        swarm_obs[1:12] = obs[3:45:4] / 100.0
-        # Add information on the number of enemy units on each node on the map
-        swarm_obs[12:23] = obs[4:45:4] / 100.0
-        # Add information on the number of ally units on each node of the map
-        swarm_obs[23:34] = allies_on_node[:] / 12.0
+        # Add the swarm ID to the array
+        swarm_obs[1+swarm_number] = 1.0
         # Add information on the swarm's current node
         for node_num in range(self.num_nodes):
             if obs[45+5*swarm_number] == node_num + 1:
-                swarm_obs[34+node_num] = 1
+                swarm_obs[13+node_num] = 1
             else:
-                swarm_obs[34+node_num] = 0
-        # Add information on the swarm's total health
-        swarm_obs[45] = obs[47+5*swarm_number] * obs[49+5*swarm_number] / (1000.0)
-        # Add information on whether the swarm is currently in transit
-        swarm_obs[46] = obs[48+5*swarm_number]
-        # Add swarm number ID to the input
-        swarm_obs[47+swarm_number] = 1
+                swarm_obs[13+node_num] = 0
         # Return the final swarm observation array
         return swarm_obs
 
@@ -276,9 +240,6 @@ class DQNAgent():
         Optimize the network via a training function. Will return immediately
         without training if there is not enough memory in the experience replay.
         """
-        # If training is not set to true, we do not want to optimize the model
-        if not TRAIN:
-            return
         # If the NStepModule's experience replay isn't large enough, we should bail out.
         # Otherwise, we can grab sample data from the replay memory.
         if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
@@ -321,37 +282,15 @@ class DQNAgent():
         Perform end-of-episode functions for the agent such as updating the
         target network and saving game off to replay memory.
 
-        @param episodes The number of episodes that have elapsed since the current training session began
+        @param episodes The number of episodes that have elapsed since training began
         """
         # Add the played game to memory
         self.NStepModule.addGameToReplayMemory()
         # Update target network every UPDATE_TARGET_AFTER episodes
-        if episodes % TARGET_UPDATE == 0 and TRAIN:
+        if episodes % TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
-        # Save the network every SAVE_NETWORK_AFTER episodes
-        if episodes % SAVE_NETWORK_AFTER == 0 and TRAIN:
-            self.save_network(episodes)
         # Decay epsilon
-        if TRAIN:
-            self.epsilon *= EPS_DECAY
-
-    def save_network(self, episodes):
-        """
-        Saves the network's state dict, epsilon value, and episode count to the specified file.
-
-        @param episodes The number of episodes that have elapsed since the current training session began
-        """
-        if NETWORK_SAVE_NAME:
-            save_file = open(NETWORK_SAVE_NAME + '.pickle', 'wb')
-            pickle.dump({
-                'state_dict': self.policy_net.state_dict(),
-                'epsilon': self.epsilon,
-                'episodes': episodes + self.previous_episodes,
-            }, save_file)
-            save_file.close()
-            print('Saved Network')
-        else:
-            print('Save Failed - Save File Not Specified')
+        self.epsilon *= EPS_DECAY
 
 
 ### DEFINE REPLAY MEMORY TRANSITION ###
