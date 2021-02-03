@@ -1,4 +1,3 @@
-import sys
 import gym
 import math
 import random
@@ -18,37 +17,28 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 
-DOUBLE_MAX = 1.7976931348623158E+308
-BATCH_SIZE = 256 # Updated
+BATCH_SIZE = 128
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
-LEAKY_SLOPE = 0.75 # Updated
-WEIGHT_DECAY = 0 # Updated
-EXPLORATION = "EPS"
-TEMP_START = 1e+1
-TEMP_END = 1.0
-TEMP_DECAY = 0.00005
 
 ### Updated the decay to finish later
 # Increase by one order of magnitude to finish around episode 200-250
 EPS_DECAY = 0.00005
 ###
 
-TARGET_UPDATE = 100 # Updated
+TARGET_UPDATE = 10
 steps_done = 0
 
 # Use custom reward shaping
 custom_reward = False
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#print(torch.cuda.version)
 
 class DQNAgent():
-    def __init__(self,action_space,observation_space, player_num,map_name,pretrainedModel):
+    def __init__(self,action_space,observation_space, player_num,map_name):
         #Base Setup for the DQN Agent
         self.eps_threshold = 0
-        self.Temp = TEMP_START
         self.action_space = action_space
         self.num_groups = 12
 
@@ -56,7 +46,7 @@ class DQNAgent():
         self.n_observations = observation_space.shape
         self.seed = 1
 
-        with open('D:\\Senior Design\\everglades-ai-wargame\\config\\' + map_name) as fid:
+        with open('./config/' + map_name) as fid:
             self.map_dat = json.load(fid)
 
         ## SETUP THE NETWORK ##
@@ -65,7 +55,7 @@ class DQNAgent():
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
-        self.optimizer = optim.RMSprop(self.policy_net.parameters(), weight_decay=WEIGHT_DECAY)
+        self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.memory = ReplayMemory(10000)
 
 
@@ -79,114 +69,82 @@ class DQNAgent():
         self.num_actions = action_space
 
         self.shape = (self.num_actions, 2)
+
+        self.unit_config = {
+            0: [('controller',1), ('striker', 5)],# 6
+            1: [('controller',3), ('striker', 3), ('tank', 3)],# 15
+            2: [('tank',5)],# 20
+            3: [('controller', 2), ('tank', 4)],# 26
+            4: [('striker', 10)],# 36
+            5: [('controller', 4), ('striker', 2)],# 42
+            6: [('striker', 4)],# 46
+            7: [('controller', 1), ('striker', 2), ('tank', 3)],# 52
+            8: [('controller', 3)],# 55
+            9: [('controller', 2), ('striker', 4)],# 61
+            10: [('striker', 9)],# 70
+            11: [('controller', 20), ('striker', 8), ('tank', 2)]# 100
+        }
     
     def get_action(self, obs):
-        action = np.zeros(self.shape)
-        if EXPLORATION == "Boltzmann":
-            action = self.boltzmann(action, obs)
-        elif EXPLORATION == "EPS":
-            action = self.epsilon_greedy(action, obs)
-            
-        #print(action)
-        return action
-
-
-    def boltzmann(self, action, obs):
         global steps_done
         sample = random.random()
 
-        ### Updated the eps equation to be more readable (based on the pytorch implementation on 
-        # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
-        self.Temp = TEMP_END + (TEMP_START - TEMP_END) * np.exp(steps_done * -TEMP_DECAY)
-        ###
-
-        #############################################
-        #   Set epsilon to 0 when testing the agent #
-        #############################################
-        if(self.testing_agent):
-            self.eps_threshold = 0.0
-        #############################################
-
-        #print("Current Epsilon: {}\tSteps Done: {}\n", eps_threshold,steps_done)
-        steps_done += 1
-        action_qs = self.policy_net(obs)
-
-        # Normalize between -1 and 1 prior to softmax
-        max_q  = torch.max(action_qs)
-        min_q = torch.min(action_qs)
-        for q in range(action_qs.size()[0]):
-            action_qs[q] = 2 * (action_qs[q] - min_q) / (max_q - min_q) - 1
-
-        action_qs = F.softmax(action_qs/self.Temp)
-
-        # Fitness Proportionate Selection
-        chosen_indices = np.zeros(7)
-        chosen_indices.fill(sys.maxsize)
-        i = 0
-        while i < 7 and chosen_indices[i] == sys.maxsize:
-            rand_num = random.uniform(torch.min(action_qs), torch.max(action_qs))
-            for q in range(action_qs.size()[0]):
-                if rand_num < action_qs[q]:
-                    if i >= 7:
-                        break
-                    chosen_indices[i] = q
-                    i += 1
-
-        # Unwravel chosen indices for action
-        chosen_units = chosen_indices // 12
-        chosen_nodes = chosen_indices % 11
-
-        action[:,0] = chosen_units
-        action[:,1] = chosen_nodes
-        return action
-
-    def epsilon_greedy(self, action, obs):
-        global steps_done
-        sample = random.random()
         ### Updated the eps equation to be more readable (based on the pytorch implementation on 
         # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
         self.eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(steps_done * -EPS_DECAY)
         ###
-        steps_done += 1
 
+        #print("Current Epsilon: {}\tSteps Done: {}\n", eps_threshold,steps_done)
+        steps_done += 1
+        action = np.zeros(self.shape)
         if sample > self.eps_threshold:
-            action_qs = self.policy_net(obs)
-            action = self.filter_actions(action, action_qs)
+            with torch.no_grad():
+
+                # Get the action_output from network and reshape to 2D tensor
+                action_hold = self.policy_net(obs)
+                action_hold = torch.reshape(action_hold, (12,11))
+
+                # Initialize unit, node and q-value arrays
+                action_units = np.zeros(7)
+                action_nodes = np.zeros(7)
+                action_qs = np.zeros(7)
+
+                # Unravel the output tensor into two size 7 arrays
+                for i in range(12):
+                    for j in range(11):
+                        for k in range(7):
+                            # Get largest q-value actions
+                            # Discard if lower than another action
+                            if action_hold[i,j] > action_qs[k]:
+                                action_qs[k] = action_hold[i,j]
+                                action_units[k] = i
+                                action_nodes[k] = j
+                                break
+                
+                action[:, 0] = action_units
+                action[:, 1] = action_nodes
         else:
+            # Choose random action
+            # Based on implementation in random_actions agent
             action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
             action[:, 1] = np.random.choice(self.nodes_array, self.num_actions, replace=False)
-        return action
-
-    def filter_actions(self, action, action_qs):
-        with torch.no_grad():
-            # Get the action_output from network and reshape to 2D tensor
-            action_qs = torch.reshape(action_qs, (self.num_groups, self.num_nodes))
-
-            # Initialize unit, node and q-value arrays
-            best_action_units = np.zeros(self.n_actions)
-            best_action_nodes = np.zeros(self.n_actions)
-            best_action_qs = np.zeros(self.n_actions)
-
-            # Unravel the output tensor into two size 7 arrays
-            for group_index in range(self.num_groups):
-                for node_index in range(self.num_nodes):
-                    for action_index in range(self.n_actions):
-                        # Get largest q-value actions
-                        # Discard if lower than another action
-                        if action_qs[group_index, node_index] > best_action_qs[action_index]:
-                            # Prevent unit numbers from appearing in best_action_units multiple times
-                            if group_index in best_action_units and best_action_units[action_index] != group_index:
-                                continue
-                            else:
-                                best_action_qs[action_index] = action_qs[group_index, node_index]
-                                best_action_units[action_index] = group_index
-                                best_action_nodes[action_index] = node_index
-                                break
             
-            # Create the final action array to return in a readable format
-            action[:, 0] = best_action_units
-            action[:, 1] = best_action_nodes
+        #print(action)
         return action
+
+    ### Duplicate checker
+    # Only tells the get_action not to use a particular unit
+    def check_duplicates(self,i,j,action_units,action_nodes):
+        no_dupes = True
+        # Only need to check for duplicate units
+        # Duplicate nodes are allowed
+        for u in action_units:
+            if u == i:
+                no_dupes = False
+        
+        return no_dupes
+    ###
+
 
     def optimize_model(self):
         if len(self.memory) < BATCH_SIZE:
@@ -204,8 +162,7 @@ class DQNAgent():
         # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                             batch.next_state)), device=device, dtype=torch.bool)
-        non_final_next_states = torch.cat([torch.from_numpy(s) for s in batch.next_state
-                                                if s is not None])
+        non_final_next_states = next_state_tensor
         state_batch = state_tensor
         action_batch = action_tensor
         reward_batch = reward_tensor
@@ -222,9 +179,9 @@ class DQNAgent():
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
-        next_state_values[non_final_mask] = self.target_net(non_final_next_states.view(128,105)).max(1)[0].detach()
+        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
         # Compute the expected Q values
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch.float()
+        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
@@ -249,14 +206,6 @@ class DQNAgent():
             return 0
         return
     #################################
-
-    #############################
-    #   Save Model for Testing  #
-    #############################
-    def save_model(self):
-        torch.save(self.policy_net.state_dict(), "D:\\Senior Design\\everglades-ai-wargame\\agents\\DQN\\SavedModel.pth")
-        return
-    #############################
 
 ### DEFINE REPLAY MEMORY ###
 
@@ -320,14 +269,14 @@ class QNetwork(nn.Module):
         super(QNetwork,self).__init__() ## calls __init__ method of nn.Module class
         self.seed = torch.manual_seed(seed)
         self.fc1 = nn.Linear(observation_size[0],fc1_unit)
-        self.fc2 = nn.Linear(fc1_unit,self.action_size)
+        self.fc2 = nn.Linear(fc1_unit,fc2_unit)
 
         #############################################################################################
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        #self.fc3 = nn.Linear(fc2_unit, fc3_unit)
-        #self.fc4 = nn.Linear(fc3_unit, self.action_size)
+        self.fc3 = nn.Linear(fc2_unit, fc3_unit)
+        self.fc4 = nn.Linear(fc3_unit, self.action_size)
 
         #############################################################################################
 
@@ -336,11 +285,11 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
 
-        self.fc3_adv = nn.Linear(fc2_unit,fc3_unit)
-        self.fc3_val = nn.Linear(fc2_unit,fc3_unit)
+        #self.fc3_adv = nn.Linear(fc2_unit,fc3_unit)
+        #self.fc3_val = nn.Linear(fc2_unit,fc3_unit)
 
-        self.fc4_adv = nn.Linear(fc3_unit,self.action_size)
-        self.fc4_val = nn.Linear(fc3_unit,1)
+        #self.fc4_adv = nn.Linear(fc3_unit,self.action_size)
+        #self.fc4_val = nn.Linear(fc3_unit,1)
 
         ##############################################################################################
         
@@ -362,8 +311,8 @@ class QNetwork(nn.Module):
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        #x = F.relu(self.fc3(x))
-        #x = F.relu(self.fc4(x))
+        x = F.relu(self.fc3(x))
+        x = F.relu(self.fc4(x))
 
         #############################################################################################
 
@@ -372,14 +321,14 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
         
-        adv = F.relu(self.fc3_adv(x))
-        val = F.relu(self.fc3_val(x))
+        #adv = F.relu(self.fc3_adv(x))
+        #val = F.relu(self.fc3_val(x))
 
-        adv = self.fc4_adv(adv)
-        val = self.fc4_val(val)
+        #adv = self.fc4_adv(adv)
+        #val = self.fc4_val(val)
 
-        advAverage = adv.mean()
-        x = val + adv - advAverage
+        #advAverage = adv.mean()
+        #x = val + adv - advAverage
 
         ##############################################################################################
 

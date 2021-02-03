@@ -49,9 +49,9 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space, 0, map_name,"D:\\Senior Design\\everglades-ai-wargame\\agents\\DQN\\SavedModel.pth")
+players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space, 0, map_name)
 names[0] = "DQN Agent"
-players[1] = agent1_class(env.num_actions_per_turn, 1,map_name)
+players[1] = agent1_class(env.num_actions_per_turn, 1, map_name)
 names[1] = agent1_class.__name__
 #################
 
@@ -60,13 +60,13 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 100
+n_episodes = 800
 
 #########################
 # Statistic variables   #
 #########################
 scores = []
-k = 10
+k = 100
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
@@ -121,25 +121,18 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
-        #reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
-        #players[0].memory.push(prev_observation,actions[0],observations[0],reward[0])
-        #players[0].optimize_model()
-        #players[0].update_target(i_episode)
+        reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
+        players[0].memory.push(prev_observation,actions[0],observations[0],reward[0])
+        players[0].optimize_model()
+        players[0].update_target(i_episode)
         #########################
 
-        if players[0].eps_threshold == 0:
-            current_eps = players[0].Temp
-        else:
-            current_eps = players[0].eps_threshold
+        current_eps = players[0].eps_threshold
 
         #pdb.set_trace()
-    #################
-#####################
-
-    #################
-    #   Save Model  #
-    #################
-    #players[0].save_model()
+    #####################
+    #   End Game Loop   #
+    #####################
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
@@ -162,13 +155,16 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Eps/Temp: {:.2f} Ties: {}\n'.format(i_episode,current_wr,score,losses,current_eps, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode,current_wr,score,losses,current_eps, ties), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)   
     ################################
     env.close()
+    #########################
+    #   End Training Loop   #
+    #########################
 
 
 #####################
@@ -192,7 +188,7 @@ ax1.plot(np.arange(1, n_episodes+1),scores)
 ax1.set_ylabel('Cumulative win rate')
 ax1.yaxis.label.set_color('blue')
 par1.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par1.set_ylabel('Eps/Temp')
+par1.set_ylabel('Epsilon')
 par1.yaxis.label.set_color('green')
 #######################
 
@@ -201,7 +197,7 @@ par1.yaxis.label.set_color('green')
 ##################################
 ax2.set_ylim([0.0,1.0])
 par2.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par2.set_ylabel('Eps/Temp')
+par2.set_ylabel('Epsilon')
 par2.yaxis.label.set_color('green')
 ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
 ax2.set_ylabel('Average win rate')
