@@ -15,7 +15,7 @@ class random_actions:
         for i, in_node in enumerate(self.map_dat['nodes']):
             self.nodes_array.append(in_node['ID'])
 
-        self.num_nodes = len(self.map_dat['nodes'])
+        self.num_nodes = 11
         self.num_actions = action_space
 
         self.shape = (self.num_actions, 2)

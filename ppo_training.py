@@ -11,7 +11,10 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.DQN.DQNAgent import DQNAgent
+from agents.PPO.PPOAgent import PPOAgent
+
+# Import agent to train against
+sys.path.append(os.path.abspath('../'))
 from agents.random_actions import random_actions
 
 #from everglades-server import generate_map
@@ -19,10 +22,6 @@ from agents.random_actions import random_actions
 ## Input Variables
 # Agent files must include a class of the same name with a 'get_action' function
 # Do not include './' in file path
-#if len(sys.argv) > 2:
-#    agent1_file = 'agents/' + sys.argv[2]
-#else:
-#    agent1_file = 'agents/State_Machine/random_actions'
 
 #############################
 # Environment Config Setup  #
@@ -37,21 +36,31 @@ output_dir = './game_telemetry/'
 
 debug = False
 
-## Specific Imports
-#agent1_name, agent1_extension = os.path.splitext(agent1_file)
-#agent1_mod = importlib.import_module(agent1_name.replace('/','.'))
-#agent1_class = getattr(agent1_mod, os.path.basename(agent1_name))
-
 ## Main Script
 env = gym.make('everglades-v0')
 players = {}
 names = {}
 
+#####################
+#   PPO Constants   #
+#####################
+N_LATENT_VAR = 128
+LR = 1e-2
+K_EPOCHS = 4
+GAMMA = 0.99
+BETAS = (0.9,0.999)
+EPS_CLIP = 0.2
+ACTION_DIM = 132
+OBSERVATION_DIM = 105
+NUM_GAMES_TILL_UPDATE = 14
+UPDATE_TIMESTEP = 150 * NUM_GAMES_TILL_UPDATE
+#################
+
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space,0)
-names[0] = "DQN Agent"
+players[0] = PPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP)
+names[0] = 'PPO Agent'
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
@@ -62,6 +71,7 @@ actions = {}
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
 n_episodes = 1000
+timestep = 0
 
 #########################
 # Statistic variables   #
@@ -117,24 +127,25 @@ for i_episode in range(1, n_episodes+1):
         # Update env
         observations, reward, done, info = env.step(actions)
 
+        timestep += 1
         #########################
         # Handle agent update   #
         #########################
-        reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
 
-        # Unwravel action to add into memory seperately
-        action_0 = 0
+        # Add in rewards and terminals 7 times to reflect the other memory additions
+        # i.e. Actions are added one at a time (for a total of 7) into the memory
         for i in range(7):
-            action_0 = (actions[0][i][0] * 11 + actions[0][i][1]) 
-            players[0].memory.push(prev_observation,action_0,observations[0],reward[0])
-        
-        players[0].optimize_model()
-        players[0].update_target(i_episode)
+            players[0].memory.rewards.append(reward[0])
+            players[0].memory.is_terminals.append(done)
+
+        # Updates agent after 150 * Number of games timesteps
+        if timestep % UPDATE_TIMESTEP == 0:
+            players[0].optimize_model()
+            players[0].memory.clear_memory()
+            timestep = 0
         #########################
 
-        current_eps = players[0].eps_threshold
-        if players[0].Temp != 0:
-            current_eps = players[0].Temp
+        current_eps = timestep
         current_loss = players[0].loss
 
         #pdb.set_trace()
@@ -164,7 +175,7 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Epsilon: {:.2f}  Loss: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps,current_loss), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
@@ -185,11 +196,7 @@ fig, (ax1, ax2) = plt.subplots(2)
 #   Epsilon Plotting    #
 #########################
 par1 = ax1.twinx()
-par3 = ax1.twinx()
 par2 = ax2.twinx()
-par4 = ax2.twinx()
-par3.spines["right"].set_position(("axes", 1.2))
-par4.spines["right"].set_position(("axes", 1.2))
 #########################
 
 ######################
@@ -200,45 +207,23 @@ fig.suptitle('Win rates')
 ax1.plot(np.arange(1, n_episodes+1),scores)
 ax1.set_ylabel('Cumulative win rate')
 ax1.yaxis.label.set_color('blue')
-par1.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par1.set_ylabel('Eps/Temp')
+par1.plot(np.arange(1,n_episodes+1),lossVals,color="green",alpha=0.5)
+par1.set_ylabel('Loss')
 par1.yaxis.label.set_color('green')
-par3.plot(np.arange(1,n_episodes+1),lossVals,color="orange",alpha=0.5)
-par3.set_ylabel('Loss')
-par3.yaxis.label.set_color('orange')
 #######################
 
 ##################################
 #   Average Per K Episodes Plot  #
 ##################################
 ax2.set_ylim([0.0,1.0])
-par2.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par2.set_ylabel('Eps/Temp')
+par2.plot(np.arange(1,n_episodes+1),lossVals,color="green",alpha=0.5)
+par2.set_ylabel('Loss')
 par2.yaxis.label.set_color('green')
-par4.plot(np.arange(1,n_episodes+1),lossVals,color="orange",alpha=0.5)
-par4.set_ylabel('Loss')
-par4.yaxis.label.set_color('orange')
 ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
 ax2.set_ylabel('Average win rate')
 ax2.yaxis.label.set_color('blue')
 ax2.set_xlabel('Episode #')
-
-par3.tick_params(axis='y', colors='orange')
-par4.tick_params(axis='y', colors="orange")
-
 plt.show()
 #############################
-
-#########################
-#   Setup Loss Spines   #
-#########################
-for ax in [par3, par4]:
-    ax.set_frame_on(True)
-    ax.patch.set_visible(False)
-
-    plt.setp(ax.spines.values(), visible=False)
-    ax.spines["right"].set_visible(True)
-
-#########################
 
 #########

@@ -44,7 +44,7 @@ class EvergladesEnv(gym.Env):
                 reward[0] = 1 if scores[0] > scores[1] else -1
                 ###
 
-                reward[1] = reward[0] * -1 # flip the sign
+                reward[1] = 1 if scores[1] > scores[0] else -1
             # else reward is 0 for a tie
             #print(scores)
         # end status done check
@@ -68,6 +68,9 @@ class EvergladesEnv(gym.Env):
             # Percent Difference Reward
             reward[0] = (scores[0]-scores[1]) / ((scores[0] + scores[1]) / 2)
             reward[1] = (scores[1]-scores[0]) / ((scores[0] + scores[1]) / 2)
+
+            #if reward[0] < 0:
+            #    reward[0] = 0
 
         # return state, reward, done, info
         return observations, reward, done, {}
