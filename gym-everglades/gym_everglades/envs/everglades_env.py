@@ -41,7 +41,7 @@ class EvergladesEnv(gym.Env):
             done = 1
             if scores[0] != scores[1]:
                 ### Boosted win score to compensate for new reward system
-                reward[0] = 1 if scores[0] > scores[1] else -1
+                reward[0] = 1 if scores[0] > scores[1] else 0
                 ###
 
                 reward[1] = 1 if scores[1] > scores[0] else -1
@@ -58,7 +58,7 @@ class EvergladesEnv(gym.Env):
             # Normalized by MAX_SCORE
             # Subtraction puts emphasis on having more points than the other player. Should force agent to always try and take
             # Another objective if its score is negative
-            #reward[0] = scores[0] / MAX_SCORE
+            reward[0] = scores[0] / MAX_SCORE
             #reward_0 = reward[0]
             #reward[1] = scores[1] / MAX_SCORE
             #reward[0] -= reward[1]
@@ -66,8 +66,8 @@ class EvergladesEnv(gym.Env):
             ######################################################
 
             # Percent Difference Reward
-            reward[0] = (scores[0]-scores[1]) / ((scores[0] + scores[1]) / 2)
-            reward[1] = (scores[1]-scores[0]) / ((scores[0] + scores[1]) / 2)
+            #reward[0] = (scores[0]-scores[1]) / ((scores[0] + scores[1]) / 2)
+            #reward[1] = (scores[1]-scores[0]) / ((scores[0] + scores[1]) / 2)
 
             #if reward[0] < 0:
             #    reward[0] = 0

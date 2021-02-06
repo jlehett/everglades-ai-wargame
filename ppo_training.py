@@ -11,7 +11,7 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.PPO.PPOAgent import PPOAgent
+from agents.PPO1.PPOAgent import PPOAgent
 
 # Import agent to train against
 sys.path.append(os.path.abspath('../'))
@@ -46,13 +46,13 @@ names = {}
 #####################
 N_LATENT_VAR = 128
 LR = 1e-2
-K_EPOCHS = 4
+K_EPOCHS = 8
 GAMMA = 0.99
 BETAS = (0.9,0.999)
 EPS_CLIP = 0.2
 ACTION_DIM = 132
 OBSERVATION_DIM = 105
-NUM_GAMES_TILL_UPDATE = 14
+NUM_GAMES_TILL_UPDATE = 15
 UPDATE_TIMESTEP = 150 * NUM_GAMES_TILL_UPDATE
 #################
 

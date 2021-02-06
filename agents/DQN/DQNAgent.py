@@ -23,10 +23,10 @@ BATCH_SIZE = 150 # Updated
 GAMMA = 0.999
 LEAKY_SLOPE = 0.01 # Updated
 WEIGHT_DECAY = 0 # Leave at zero. Weight decay has so far caused massive collapse in network output
-EXPLORATION = "Boltzmann" # Defines the exploration type. EPS is Epsilon Greedy, Boltzmann is Boltzmann Distribution Sampling
+EXPLORATION = "EPS" # Defines the exploration type. EPS is Epsilon Greedy, Boltzmann is Boltzmann Distribution Sampling
 
 # Temperature settings for Boltzmann exploration
-TEMP_START = 1e+1
+TEMP_START = 1e+2
 TEMP_END = 1.0
 TEMP_DECAY = 0.00005
 
@@ -50,7 +50,7 @@ class DQNAgent():
     def __init__(self,action_space,observation_space, player_num):
         #Base Setup for the DQN Agent
         self.eps_threshold = 0
-        self.Temp = TEMP_START
+        self.Temp = 0
         self.action_space = action_space
         self.num_groups = 12
 
@@ -280,7 +280,7 @@ import torchvision.transforms as T
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
-    def __init__(self,observation_size,action_size, seed, fc1_unit = 128,
+    def __init__(self,observation_size,action_size, seed, fc1_unit = 528,
                  fc2_unit = 128):
         """
         Initialize parameters and build model.

@@ -77,6 +77,8 @@ current_eps = 0
 epsilonVals = []
 current_loss = 0
 lossVals = []
+average_reward = 0
+avgRewardVals = []
 #########################
 
 #####################
@@ -97,6 +99,8 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
+    # Reset the reward average
+    average_reward = 0
     while not done:
         if i_episode % 5 == 0:
             env.render()
@@ -121,6 +125,9 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
         reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
+
+        # Update the agent's average reward
+        average_reward += reward[0]
 
         # Unwravel action to add into memory seperately
         action_0 = 0
@@ -159,12 +166,14 @@ for i_episode in range(1, n_episodes+1):
     current_wr = score / i_episode
     epsilonVals.append(current_eps)
     lossVals.append(current_loss)
+    average_reward /= 150 # average reward accross the 150 turns
+    avgRewardVals.append(average_reward)
     #############################################
 
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Reward: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,average_reward), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
@@ -179,7 +188,7 @@ for i_episode in range(1, n_episodes+1):
 #####################
 # Plot final charts #
 #####################
-fig, (ax1, ax2) = plt.subplots(2)
+fig, (ax1, ax2,ax3) = plt.subplots(3)
 
 #########################
 #   Epsilon Plotting    #
@@ -225,10 +234,18 @@ ax2.set_xlabel('Episode #')
 
 par3.tick_params(axis='y', colors='orange')
 par4.tick_params(axis='y', colors="orange")
-
-plt.show()
 #############################
 
+#########################
+#   Average Reward Plot #
+#########################
+ax3.plot(np.arange(1, n_episodes+1),avgRewardVals)
+ax3.set_ylabel('Average reward')
+ax3.yaxis.label.set_color('blue')
+ax3.set_xlabel('Episode #')
+#########################
+
+plt.show()
 #########################
 #   Setup Loss Spines   #
 #########################
