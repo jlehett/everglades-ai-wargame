@@ -8,6 +8,8 @@ from gym_everglades.envs.everglades_renderer import EvergladesRenderer
 import numpy as np
 import pdb
 
+MAX_SCORE = 3700
+
 class EvergladesEnv(gym.Env):
 
     def __init__(self):
@@ -38,27 +40,36 @@ class EvergladesEnv(gym.Env):
             done = 1
             if scores[0] != scores[1]:
                 ### Boosted win score to compensate for new reward system
-                reward[0] = 10000 if scores[0] > scores[1] else -10000
+                reward[0] = 1 if scores[0] > scores[1] else 0
                 ###
 
-                reward[1] = reward[0] * -1 # flip the sign
+                reward[1] = 1 if scores[1] > scores[0] else -1
             # else reward is 0 for a tie
             #print(scores)
         # end status done check
         #print(status)
         else:
-            #####################################################
-            # Custom Reward System for non-game winning turns   #
-            #####################################################
-
             ### Use the score calculated in server.game_end (used for non game ending rounds as well)
             # Score is calculated from number of nodes held for a given amount of time
             # Should incentivize the agent to be more agressive
             # Scores range from 0- ~3000 points
             # May want to attempt normalization in the future (make sure to change win score back to 1 if so)
-            reward[0] = scores[0]
-            reward[1] = scores[1]
+            # Normalized by MAX_SCORE
+            # Subtraction puts emphasis on having more points than the other player. Should force agent to always try and take
+            # Another objective if its score is negative
+            reward[0] = scores[0] / MAX_SCORE
+            #reward_0 = reward[0]
+            #reward[1] = scores[1] / MAX_SCORE
+            #reward[0] -= reward[1]
+            #reward[1] -= reward_0
             ######################################################
+
+            # Percent Difference Reward
+            #reward[0] = (scores[0]-scores[1]) / ((scores[0] + scores[1]) / 2)
+            #reward[1] = (scores[1]-scores[0]) / ((scores[0] + scores[1]) / 2)
+
+            #if reward[0] < 0:
+            #    reward[0] = 0
 
         # return state, reward, done, info
         return observations, reward, done, {}
@@ -95,6 +106,8 @@ class EvergladesEnv(gym.Env):
         
         # Initialize players with selected groups
         self.game.game_init(self.player_dat)
+
+        self.renderer = EvergladesRenderer(self.game)
 
         # Get first game state
         observations = self._build_observations()

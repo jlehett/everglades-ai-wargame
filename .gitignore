@@ -16,3 +16,4 @@
 
 # Ignore performance graph images
 /performance.png
+.vscode/settings.json
