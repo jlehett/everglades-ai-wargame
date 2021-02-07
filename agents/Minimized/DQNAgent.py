@@ -125,6 +125,23 @@ class DQNAgent():
         actions[:] = [decision['best_action'] for decision in sorted_swarm_decisions[:7]]
         return actions
 
+    def get_estimated_future_reward(self, obs):
+        """
+        Returns the estimated future reward given the base observation space of 105 values.
+
+        @param obs The observation array consisting of all 105 values passed by the Everglades environment
+        @returns Float value representing the maximum predicted future reward
+        """
+        # Get all swarm decisions
+        swarm_decisions = self.get_all_swarm_decisions(obs)
+        # Sort the swarm decisions array by the best q values
+        sorted_swarm_decisions = sorted(
+            swarm_decisions,
+            key=lambda k: k['best_q_value']
+        )
+        # Return the maximum future predicted value as a float
+        return float(sorted_swarm_decisions[0]['best_q_value'])
+
     def get_allies_on_node_data(self, obs):
         """
         Create a numpy array to store the number of allies on each node.
@@ -243,8 +260,10 @@ class DQNAgent():
         previous_state_allies_on_node = self.get_allies_on_node_data(previous_state)
         for swarm_num in range(NUM_GROUPS):
             per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
+        # Get the max predicted future reward
+        estimated_predicted_future_reward = self.get_estimated_future_reward(next_state)
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
-        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
+        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward / 10000.0, estimated_predicted_future_reward)
 
     def optimize_model(self):
         """
@@ -308,4 +327,4 @@ class DQNAgent():
 ### DEFINE REPLAY MEMORY TRANSITION ###
 
 Transition = namedtuple('Transition',
-                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
+                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone', 'next_q'))

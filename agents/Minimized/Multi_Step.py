@@ -22,7 +22,7 @@ class NStepModule:
         # The number of steps to use in n-step learning
         self.n = n
     
-    def trackGameState(self, swarm_states, action, reward):
+    def trackGameState(self, swarm_states, action, reward, next_q):
         """
             @Public
             Add the swarm game states for the current time step to the game memory
@@ -30,8 +30,9 @@ class NStepModule:
             @param swarm_states Array of each swarm's observations indexed by swarm number
             @param action 7x2 action array composed of the 7 actions taken, each represented by the tuple (swarm_number 0-indexed, node_number 1-indexed)
             @param reward Float value containing the reward received by the agent for taking specified actions at the current step
+            @param next_q Float value representing the next predicted q value
         """
-        self.game_memory.append((swarm_states, action, reward))
+        self.game_memory.append((swarm_states, action, reward, next_q))
 
     def addGameToReplayMemory(self, policy_net):
         """
@@ -43,6 +44,7 @@ class NStepModule:
         for step_num, game_step in enumerate(self.game_memory):
             previous_state_swarms = game_step[0]
             actions = self.game_memory[step_num][1]
+            next_q = self.game_memory[step_num][3]
             actualSummedReward = self.getSummedReward(step_num)
             next_state_swarms = np.zeros(OBSERVATION_SPACE)
             if step_num + self.n < len(self.game_memory):
@@ -60,7 +62,7 @@ class NStepModule:
                 # If the node_moved_to is -1, the swarm did not take an action;
                 # If the swarm DID take an action, add it to replay memory
                 if node_moved_to != -1:
-                    self.replay_memory.push( policy_net, swarm_state, int(node_moved_to), next_state_swarms, actualSummedReward, doesNotHitDone, qnext)
+                    self.replay_memory.push( policy_net, swarm_state, int(node_moved_to), next_state_swarms, actualSummedReward, doesNotHitDone, next_q)
         # Reset the game memory
         self.resetGameMemory()
 
@@ -113,13 +115,12 @@ class NStepReplayMemory(object):
         self.priority = deque(maxlen=10000)
         self.position = 0
         self.Transition = namedtuple('Transition',
-                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
+                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone', 'next_q'))
         
         
 
     ## DM PER EDIT ##
     def push(self, policy_net, *args):
-        print(policy_net)
         if len(self.memory) < self.capacity:
             self.memory.append(None)
         # self.replay_memory.push(previous_state_swarms, actions, next_state_swarms, actualSummedReward, hitsDone)
@@ -128,10 +129,9 @@ class NStepReplayMemory(object):
         self.position = (self.position + 1) % self.capacity
 
     ## DM PER EDIT ##
-    def prioritize(self, policy_net, state, action, next_state, reward, done, qnext):
-        print(policy_net(next_state)[0])
-        q_next = reward + 0.9 * np.max(policy_net(next_state)[0])
-        q = policy_net(state)[0][action]
+    def prioritize(self, policy_net, state, action, next_state, reward, done, next_q):
+        q_next = reward + 0.9 * next_q # Leave this here; the wording is confusing, but this is computing what was here before
+        q = policy_net(state).detach()[action] # Don't need to index by 0 here, just by action once the tensor is detached
         p = (np.abs(q_next-q)+ (np.e ** -10)) ** alpha
         self.priority.append(p)
 
