@@ -8,6 +8,7 @@ import random
 import numpy as np
 from collections import namedtuple
 
+
 NUM_GROUPS = 12 # The number of unit groups in the Everglades environment for the agent
 NUM_ACTIONS = 7 # The number of actions an agent can take in a single turn
 EVERGLADES_ACTION_SIZE = (NUM_ACTIONS, 2) # The action shape in an Everglades-readable format
@@ -44,12 +45,12 @@ class DQNAgent():
         """
         # Store variables
         self.epsilon = epsilon
-
+        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
         # Create the NStepModule
-        self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
+        self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE, self.policy_net)
 
         # Set up the network
-        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
+        #self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
         self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
         # Load the policy network's values into the target network
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -254,10 +255,10 @@ class DQNAgent():
         # Otherwise, we can grab sample data from the replay memory.
         if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
             return
-        transitions = self.NStepModule.sampleReplayMemory(BATCH_SIZE)
+        transitions, importance = self.NStepModule.sampleReplayMemory(BATCH_SIZE, self.policy_network)
 
         # Create the batch of data to use
-        batch = Transition(*zip(*transitions))
+        batch = Transition(*zip(*transitions, importance))
         nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
         swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs))
         swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1)
@@ -280,7 +281,8 @@ class DQNAgent():
         estimated_future_reward = max_next_state_predicted_q_batch * GAMMA ** N_STEP + reward_batch
 
         # Compute the loss
-        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
+        # loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
+        loss = torch.mean(torch.multiply(tf.square(self.output - self.target),self.importance))
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.policy_net.parameters():
@@ -295,7 +297,7 @@ class DQNAgent():
         @param episodes The number of episodes that have elapsed since training began
         """
         # Add the played game to memory
-        self.NStepModule.addGameToReplayMemory()
+        self.NStepModule.addGameToReplayMemory(self.policy_net)
         # Update target network every UPDATE_TARGET_AFTER episodes
         if episodes % TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
