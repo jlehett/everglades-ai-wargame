@@ -10,9 +10,10 @@ from collections import namedtuple
 import pickle
 import os
 
-TRAIN = True # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
-EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
+TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
+EVALUATE_EPSILON = 0.05 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
+TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
 
 NETWORK_SAVE_NAME = 'agents/Minimized/PerSwarm' # The name to use in saving the trained agent
 NETWORK_LOAD_NAME = 'agents/Minimized/PerSwarm' # The name to use in loading a saved agent
@@ -24,16 +25,15 @@ EVERGLADES_ACTION_SIZE = (NUM_ACTIONS, 2) # The action shape in an Everglades-re
 
 INPUT_SIZE = 59 # This is a custom value defined when creating the minimized input
 OUTPUT_SIZE = 11 # This is the same as the number of nodes
-FC1_SIZE = 100 # Number of nodes in the first hidden layer
-FC2_SIZE = 100 # Number of nodes in the second hidden layer
+FC1_SIZE = 80 # Number of nodes in the first hidden layer
 
 BATCH_SIZE = 256 # The number of inputs to train on at one time
-TARGET_UPDATE = 10 # The number of episodes to wait until we update the target network
+TARGET_UPDATE = 100 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.999 # The amount to discount the future rewards by
-LEARNING_RATE = 1e-3 # The learning rate to be used by the optimizer
-N_STEP = 50 # The number of steps to use in multi-step learning
-EPS_DECAY = 0.9995 # The rate at which epsilon decays at the end of each episode
+LEARNING_RATE = 1e-5 # The learning rate to be used by the optimizer
+N_STEP = 1 # The number of steps to use in multi-step learning
+EPS_DECAY = 0.995 # The rate at which epsilon decays at the end of each episode
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -63,8 +63,8 @@ class DQNAgent():
         self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
 
         # Set up the network
-        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, FC2_SIZE)
-        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, FC2_SIZE)
+        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
+        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
 
         # If a save file is specified and the file exists, load the save file
         if NETWORK_LOAD_NAME and os.path.exists(NETWORK_LOAD_NAME + '.pickle'):
@@ -334,6 +334,8 @@ class DQNAgent():
         # Decay epsilon
         if TRAIN:
             self.epsilon *= EPS_DECAY
+            if self.epsilon < TRAIN_EPSILON_MIN:
+                self.epsilon = TRAIN_EPSILON_MIN
 
     def save_network(self, episodes):
         """

@@ -12,7 +12,7 @@ import numpy as np
 
 from everglades_server import server
 from agents.Minimized.DQNAgent import DQNAgent
-from agents.random_actions import random_actions
+from agents.State_Machine.random_actions import random_actions
 
 #############################
 # Environment Config Setup  #
@@ -141,7 +141,7 @@ for i_episode in range(1, n_episodes+1):
     #################################
     print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, ties), end="")
     if i_episode % k == 0:
-        print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
+        print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
         
