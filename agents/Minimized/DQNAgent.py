@@ -274,7 +274,7 @@ class DQNAgent():
         # Otherwise, we can grab sample data from the replay memory.
         if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
             return
-        transitions, importance = self.NStepModule.sampleReplayMemory(BATCH_SIZE, self.policy_network)
+        transitions, importance = self.NStepModule.sampleReplayMemory(BATCH_SIZE)
 
         # Create the batch of data to use
         batch = Transition(*zip(*transitions, importance))

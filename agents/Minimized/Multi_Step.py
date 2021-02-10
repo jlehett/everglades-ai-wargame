@@ -132,16 +132,16 @@ class NStepReplayMemory(object):
     def prioritize(self, policy_net, state, action, next_state, reward, done, next_q):
         q_next = reward + 0.9 * next_q # Leave this here; the wording is confusing, but this is computing what was here before
         q = policy_net(state).detach()[action] # Don't need to index by 0 here, just by action once the tensor is detached
-        p = (np.abs(q_next-q)+ (np.e ** -10)) ** alpha
+        p = (np.abs(q_next-q)+ (np.e ** -10)) ** 0.9
         self.priority.append(p)
 
     def sample(self, batch_size):
-        p_sum = np.sum(self.replay_memory.priority)
-        prob = self.replay_memory.priority / p_sum
-        sample_indices = random.choices(range(len(prob)), k=self.batch_size, weights=prob)
-        importance = (1/prob) * (1/len(self.replay_memory.priority))
+        p_sum = np.sum(self.priority)
+        prob = self.priority / p_sum
+        sample_indices = random.choices(range(len(prob)), k=batch_size, weights=prob)
+        importance = (1/prob) * (1/len(self.priority))
         importance = np.array(importance)[sample_indices]
-        samples = np.array(self.replay_memory)[sample_indices]
+        samples = np.array(self.memory)[sample_indices]
         return samples, importance
 
     def __len__(self):
