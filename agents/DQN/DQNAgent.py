@@ -75,6 +75,7 @@ class DQNAgent():
 
         self.shape = (self.num_actions, 2)
         self.loss = 0
+        self.q_values = np.zeros((132))
     
     def get_action(self, obs):
         action = np.zeros(self.shape)
@@ -125,9 +126,11 @@ class DQNAgent():
         if sample > self.eps_threshold:
             action_qs = self.policy_net(obs)
             action = self.filter_actions(action, action_qs)
+            self.q_values = action_qs
         else:
             action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
             action[:, 1] = np.random.choice(self.num_nodes, self.num_actions, replace=False)
+
         return action
 
     def filter_actions(self, action, action_qs):
@@ -216,6 +219,10 @@ class DQNAgent():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
+        #Noisy net reset params
+        self.policy_net.reset_noise()
+        self.target_net.reset_noise()
+
         # Sets the loss to be grabbed by training file
         self.loss = loss
     
@@ -280,7 +287,7 @@ import torchvision.transforms as T
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
-    def __init__(self,observation_size,action_size, seed, fc1_unit = 528,
+    def __init__(self,observation_size,action_size, seed, fc1_unit = 128,
                  fc2_unit = 128):
         """
         Initialize parameters and build model.
@@ -295,13 +302,13 @@ class QNetwork(nn.Module):
         self.action_size = 12 * 11
         super(QNetwork,self).__init__() ## calls __init__ method of nn.Module class
         self.seed = torch.manual_seed(seed)
-        self.fc1 = nn.Linear(observation_size[0],fc1_unit)
+        self.fc1 = NoisyLinear(observation_size[0],fc1_unit)
         
         #############################################################################################
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        self.fc2 = nn.Linear(fc1_unit,self.action_size)
+        #self.fc2 = NoisyLinear(fc1_unit,self.action_size)
 
         #############################################################################################
 
@@ -310,11 +317,11 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
 
-        #self.fc3_adv = nn.Linear(fc1_unit,fc2_unit)
-        #self.fc3_val = nn.Linear(fc1_unit,fc2_unit)
+        self.fc2_adv = NoisyLinear(fc1_unit,fc2_unit)
+        self.fc2_val = NoisyLinear(fc1_unit,fc2_unit)
 
-        #self.fc4_adv = nn.Linear(fc2_unit,self.action_size)
-        #self.fc4_val = nn.Linear(fc2_unit,1)
+        self.fc3_adv = NoisyLinear(fc2_unit,self.action_size)
+        self.fc3_val = NoisyLinear(fc2_unit,1)
 
         ##############################################################################################
         
@@ -335,7 +342,7 @@ class QNetwork(nn.Module):
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        x = F.relu(self.fc2(x))
+        #x = self.fc2(x)
 
         #############################################################################################
 
@@ -344,15 +351,81 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
         
-        #adv = F.relu(self.fc3_adv(x))
-        #val = F.relu(self.fc3_val(x))
+        adv = F.relu(self.fc2_adv(x))
+        val = F.relu(self.fc2_val(x))
 
-        #adv = self.fc4_adv(adv)
-        #val = self.fc4_val(val)
+        adv = self.fc3_adv(adv)
+        val = self.fc3_val(val)
 
-        #advAverage = adv.mean()
-        #x = val + adv - advAverage
+        advAverage = adv.mean()
+        x = val + adv - advAverage
 
         ##############################################################################################
 
+        return x
+    
+    def reset_noise(self):
+        self.fc1.reset_noise()
+        #self.fc2.reset_noise() # Non-dueling
+
+        self.fc2_adv.reset_noise()
+        self.fc2_val.reset_noise()
+        self.fc3_adv.reset_noise()
+        self.fc3_val.reset_noise()
+
+import math
+import torch
+from torch import nn
+from torch.nn import init, Parameter
+from torch.nn import functional as F
+from torch.autograd import Variable
+
+class NoisyLinear(nn.Module):
+    def __init__(self, in_features, out_features, std_init=0.4):
+        super(NoisyLinear, self).__init__()
+        
+        self.in_features  = in_features
+        self.out_features = out_features
+        self.std_init     = std_init
+        
+        self.weight_mu    = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        self.weight_sigma = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        self.register_buffer('weight_epsilon', torch.FloatTensor(out_features, in_features))
+        
+        self.bias_mu    = nn.Parameter(torch.FloatTensor(out_features))
+        self.bias_sigma = nn.Parameter(torch.FloatTensor(out_features))
+        self.register_buffer('bias_epsilon', torch.FloatTensor(out_features))
+        
+        self.reset_parameters()
+        self.reset_noise()
+    
+    def forward(self, x):
+        if self.training: 
+            weight = self.weight_mu + self.weight_sigma.mul(Variable(self.weight_epsilon))
+            bias   = self.bias_mu   + self.bias_sigma.mul(Variable(self.bias_epsilon))
+        else:
+            weight = self.weight_mu
+            bias   = self.bias_mu
+        
+        return F.linear(x, weight, bias)
+    
+    def reset_parameters(self):
+        mu_range = 1 / math.sqrt(self.weight_mu.size(1))
+        
+        self.weight_mu.data.uniform_(-mu_range, mu_range)
+        self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.weight_sigma.size(1)))
+        
+        self.bias_mu.data.uniform_(-mu_range, mu_range)
+        self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.bias_sigma.size(0)))
+    
+    def reset_noise(self):
+        epsilon_in  = self._scale_noise(self.in_features)
+        epsilon_out = self._scale_noise(self.out_features)
+        
+        self.weight_epsilon.copy_(epsilon_out.ger(epsilon_in))
+        self.bias_epsilon.copy_(self._scale_noise(self.out_features))
+    
+    def _scale_noise(self, size):
+        x = torch.randn(size)
+        x = x.sign().mul(x.abs().sqrt())
         return x

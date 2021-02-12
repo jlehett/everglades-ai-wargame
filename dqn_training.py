@@ -77,8 +77,12 @@ current_eps = 0
 epsilonVals = []
 current_loss = 0
 lossVals = []
-average_reward = 0
-avgRewardVals = []
+final_score = 0
+short_term_final_score = np.zeros((k,)) # Used to average win rates
+short_term_final_scores = [0.5] # Average win rates per k episodes
+q_values = 0
+qVals = []
+reward = {0: 0, 1: 0}
 #########################
 
 #####################
@@ -99,10 +103,8 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
-    # Reset the reward average
-    average_reward = 0
     while not done:
-        if i_episode % 5 == 0:
+        if i_episode % 20 == 0:
             env.render()
 
         ### Removed to save processing power
@@ -110,6 +112,9 @@ for i_episode in range(1, n_episodes+1):
         #if debug:
         #    env.game.debug_state()
         ###
+
+        # Get agents final score before end of game reward
+        final_score = reward[0]
 
         # Get actions for each player
         for pid in players:
@@ -126,9 +131,6 @@ for i_episode in range(1, n_episodes+1):
         #########################
         reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
 
-        # Update the agent's average reward
-        average_reward += reward[0]
-
         # Unwravel action to add into memory seperately
         action_0 = 0
         for i in range(7):
@@ -142,6 +144,7 @@ for i_episode in range(1, n_episodes+1):
         current_eps = players[0].eps_threshold
         if players[0].Temp != 0:
             current_eps = players[0].Temp
+        q_values += players[0].q_values.mean()
         current_loss = players[0].loss
 
         #pdb.set_trace()
@@ -166,18 +169,21 @@ for i_episode in range(1, n_episodes+1):
     current_wr = score / i_episode
     epsilonVals.append(current_eps)
     lossVals.append(current_loss)
-    average_reward /= 150 # average reward accross the 150 turns
-    avgRewardVals.append(average_reward)
+    short_term_final_score[(i_episode-1)%k] = final_score
+    q_values = q_values / 150
+    qVals.append(q_values)
     #############################################
 
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Reward: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,average_reward), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Q-Value: {:.2f} Final Score: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,q_values,final_score), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
-        short_term_wr = np.zeros((k,), dtype=int)   
+        short_term_wr = np.zeros((k,), dtype=int)
+        short_term_final_scores.append(np.mean(short_term_final_score))    
+        short_term_final_score = np.zeros((k,))
     ################################
     env.close()
     #########################
@@ -188,7 +194,7 @@ for i_episode in range(1, n_episodes+1):
 #####################
 # Plot final charts #
 #####################
-fig, (ax1, ax2,ax3) = plt.subplots(3)
+fig, ((ax1, ax3),(ax2,ax4)) = plt.subplots(2,2)
 
 #########################
 #   Epsilon Plotting    #
@@ -197,8 +203,8 @@ par1 = ax1.twinx()
 par3 = ax1.twinx()
 par2 = ax2.twinx()
 par4 = ax2.twinx()
-par3.spines["right"].set_position(("axes", 1.2))
-par4.spines["right"].set_position(("axes", 1.2))
+par3.spines["right"].set_position(("axes", 1.1))
+par4.spines["right"].set_position(("axes", 1.1))
 #########################
 
 ######################
@@ -230,21 +236,30 @@ par4.yaxis.label.set_color('orange')
 ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
 ax2.set_ylabel('Average win rate')
 ax2.yaxis.label.set_color('blue')
-ax2.set_xlabel('Episode #')
 
 par3.tick_params(axis='y', colors='orange')
 par4.tick_params(axis='y', colors="orange")
+ax2.set_xlabel('Episode #')
 #############################
 
 #########################
 #   Average Reward Plot #
 #########################
-ax3.plot(np.arange(1, n_episodes+1),avgRewardVals)
-ax3.set_ylabel('Average reward')
+ax3.plot(np.arange(0, n_episodes+1,k),short_term_final_scores)
+ax3.set_ylabel('Average Final Scores')
 ax3.yaxis.label.set_color('blue')
-ax3.set_xlabel('Episode #')
 #########################
 
+#########################
+#   Average Q Val Plot  #
+#########################
+ax4.plot(np.arange(0, n_episodes),qVals)
+ax4.set_ylabel('Average Q Values')
+ax4.yaxis.label.set_color('blue')
+ax4.set_xlabel('Episode #')
+#########################
+
+fig.tight_layout(pad=2.0)
 plt.show()
 #########################
 #   Setup Loss Spines   #
