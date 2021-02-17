@@ -2,6 +2,9 @@ import os
 import numpy as np
 import time
 import json
+import random
+
+RANDOM_DELAY = 0.2
 
 class random_actions:
     def __init__(self, action_space, player_num, map_name):
@@ -43,8 +46,9 @@ class random_actions:
         #    print(obs[i:i+5])
         #print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
         action = np.zeros(self.shape)
-        action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
-        action[:, 1] = np.random.choice(self.nodes_array, self.num_actions, replace=False)
+        if(random.random() < RANDOM_DELAY):
+            action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
+            action[:, 1] = np.random.choice(self.nodes_array, self.num_actions, replace=False)
         #print('!!!actions!!!')
         
         ### For bug testing
@@ -53,3 +57,6 @@ class random_actions:
         ###
 
         return action
+
+    def reset(self):
+        pass
