@@ -11,7 +11,7 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.Minimized.DQNAgent import DQNAgent
+from agents.Distributional_RL.DQNAgent import DQNAgent
 
 #from everglades-server import generate_map
 
@@ -94,7 +94,7 @@ for i_episode in range(1, n_episodes+1):
     )
 
     while not done:
-        if i_episode % 5 == 0 or notplayers[0].training:
+        if i_episode % 5 == 0 or not players[0].training:
             env.render()
 
         # Get actions for each player
