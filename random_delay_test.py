@@ -11,8 +11,8 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.Minimized.DQNAgent import DQNAgent
 from agents.State_Machine.random_actions import random_actions
+from agents.State_Machine.random_actions_delay import random_actions_delay
 
 #############################
 # Environment Config Setup  #
@@ -35,10 +35,10 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(player_num=0, map_name=map_name)
-names[0] = "DQN Agent"
+players[0] = random_actions_delay(env.num_actions_per_turn, 0, map_name)
+names[0] = "Delayed Random Agent"
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent Delay'
+names[1] = 'Random Agent'
 #################
 
 actions = {}
@@ -57,11 +57,7 @@ short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
 losses = 0
 score = 0
-current_eps = 0
 
-epsilonVals = []
-current_loss = 0
-lossVals = []
 average_reward = 0
 avgRewardVals = []
 
@@ -85,8 +81,6 @@ for i_episode in range(1, n_episodes+1):
 
     # Reset the reward average
     while not done:
-        # if i_episode % 5 == 0:
-        #     env.render()
 
         # Get actions for each player
         for pid in players:
@@ -97,26 +91,6 @@ for i_episode in range(1, n_episodes+1):
 
         # Update env
         observations, reward, done, info = env.step(actions)
-
-        #########################
-        # Handle agent update   #
-        #########################
-        players[0].remember_game_state(
-            prev_observation,
-            observations[0],
-            actions[0],
-            reward[0]
-        )
-        players[0].optimize_model()
-        #########################
-
-        current_eps = players[0].epsilon
-
-
-    ################################
-    # End of episode agent updates #
-    ################################
-    players[0].end_of_episode(i_episode)
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
@@ -133,13 +107,12 @@ for i_episode in range(1, n_episodes+1):
     #############################################
     scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
-    epsilonVals.append(current_eps)
     #############################################
 
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {}\n'.format(i_episode,current_wr,score,losses, ties), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))

@@ -41,7 +41,7 @@ class random_actions_delay:
         #for i in range(45,101,5):
         #    print(obs[i:i+5])
         #print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-        if random.random() > 0.8:
+        if random.random() > 0.68:
             action = np.zeros(self.shape)
             action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
             action[:, 1] = np.random.choice(self.nodes_array, self.num_actions, replace=False)

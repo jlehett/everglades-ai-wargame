@@ -1,5 +1,5 @@
-from agents.Minimized.QNetwork import QNetwork
-from agents.Minimized.Multi_Step import NStepModule
+from agents.Minimized_Rainbow.QNetwork import QNetwork
+from agents.Minimized_Rainbow.Multi_Step import NStepModule
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -11,12 +11,12 @@ import pickle
 import os
 
 TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
-EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
+EVALUATE_EPSILON = 0.00 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
-TRAIN_EPSILON_MIN = 0.1 # The minimum epsilon value to use during training (when TRAIN is set to True)
+TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
 
-NETWORK_SAVE_NAME = 'agents/Minimized/PerSwarmAgainstDelay3' # The name to use in saving the trained agent
-NETWORK_LOAD_NAME = 'agents/Minimized/PerSwarmAgainstDelay3' # The name to use in loading a saved agent
+NETWORK_SAVE_NAME = 'agents/Minimized_Rainbow/PerSwarm' # The name to use in saving the trained agent
+NETWORK_LOAD_NAME = 'agents/Minimized_Rainbow/PerSwarm' # The name to use in loading a saved agent
 #NETWORK_LOAD_NAME = None # The name to use in loading a saved agent
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
@@ -29,10 +29,10 @@ OUTPUT_SIZE = 11 # This is the same as the number of nodes
 FC1_SIZE = 80 # Number of nodes in the first hidden layer
 
 BATCH_SIZE = 256 # The number of inputs to train on at one time
-TARGET_UPDATE = 500 # The number of episodes to wait until we update the target network
+TARGET_UPDATE = 100 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.99 # The amount to discount the future rewards by
-LEARNING_RATE = 1e-6 # The learning rate to be used by the optimizer
+LEARNING_RATE = 1e-4 # The learning rate to be used by the optimizer
 N_STEP = 1 # The number of steps to use in multi-step learning
 EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
 
@@ -146,9 +146,9 @@ class DQNAgent():
             swarm_decisions,
             key=lambda k: k['best_q_value']
         )
-        #for decision in sorted_swarm_decisions:
-        #    print('Swarm: ' + str(decision['best_action'][0]) + '\t| Node: ' + str(decision['best_action'][1]) + '\t| Q-value: ' + str(decision['best_q_value'].item()))
-        #print('')
+        # for decision in sorted_swarm_decisions:
+        #     print('Swarm: ' + str(decision['best_action'][0]) + '\t| Node: ' + str(decision['best_action'][1]) + '\t| Q-value: ' + str(decision['best_q_value'].item()))
+        # print('')
         # Return the top 7 actions
         actions = np.zeros(EVERGLADES_ACTION_SIZE)
         actions[:] = [decision['best_action'] for decision in sorted_swarm_decisions[:7]]
@@ -305,16 +305,21 @@ class DQNAgent():
 
         # Compute the swarm's future value for next states
         next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
+        next_action_taken_mask = torch.zeros((BATCH_SIZE, 12, 1), device=device).type(torch.int64)
         for swarm_num in range(NUM_GROUPS):
+            # Use the policy net to get the action it would have taken for the swarm in the next state
+            next_action_taken_mask[:, swarm_num, 0] = torch.argmax(self.policy_net(nth_next_state_swarms_batch[:, swarm_num, :]), axis=1).type(torch.int64)
+            # Use the target net to compute all possible action values for next state.
             next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
-        # Limit future value to the best q value for each swarm
-        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2)
-        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1)
+        # Limit future value to the avg q value of the actions that would have been chosen for each swarm
+        #print(next_action_taken_mask)
+        selected_next_state_swarms_predicted_qs_batch = next_state_swarms_predicted_qs_batch.gather(2, next_action_taken_mask)
+        max_next_state_predicted_q_batch = torch.mean(selected_next_state_swarms_predicted_qs_batch, axis=1)
         # Compute the estimated future reward
-        estimated_future_reward = (max_next_state_predicted_q_batch * (GAMMA ** N_STEP) + reward_batch).to(device)
+        estimated_future_reward = (max_next_state_predicted_q_batch * (GAMMA ** N_STEP) + reward_batch.unsqueeze(1)).to(device)
 
         # Compute the loss
-        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
+        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor))
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.policy_net.parameters():

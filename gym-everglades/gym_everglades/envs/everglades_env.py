@@ -59,7 +59,7 @@ class EvergladesEnv(gym.Env):
             # Another objective if its score is negative
             reward[0] = scores[0] / MAX_SCORE
             #reward_0 = reward[0]
-            #reward[1] = scores[1] / MAX_SCORE
+            reward[1] = scores[1] / MAX_SCORE
             #reward[0] -= reward[1]
             #reward[1] -= reward_0
             ######################################################
