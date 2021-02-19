@@ -18,36 +18,37 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 
-LR = 1e-2
-BATCH_SIZE = 150 # Updated
-GAMMA = 0.999
-LEAKY_SLOPE = 0.01 # Updated
-WEIGHT_DECAY = 0 # Leave at zero. Weight decay has so far caused massive collapse in network output
-EXPLORATION = "EPS" # Defines the exploration type. EPS is Epsilon Greedy, Boltzmann is Boltzmann Distribution Sampling
-
 # Temperature settings for Boltzmann exploration
 TEMP_START = 1e+2
 TEMP_END = 1.0
 TEMP_DECAY = 0.00005
 
-### Updated the decay to finish later
-# Increase by one order of magnitude to finish around episode 200-250
-EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 0.00005
-###
-
-TARGET_UPDATE = 100 # Updated
 steps_done = 0
 
 # Use custom reward shaping
 custom_reward = False
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device_name = torch.cuda.get_device_name(0)
+has_gpu = torch.cuda.is_available()
 #print(torch.cuda.version)
 
 class DQNAgent():
-    def __init__(self,action_space,observation_space, player_num):
+    def __init__(self,action_space,observation_space, player_num, lr, replay_size, batch_size, 
+                gamma, weight_decay, exploration, eps_start, eps_end,eps_decay,target_update):
+
+        # Setup constants
+        self.lr = lr
+        self.replay_size = replay_size
+        self.batch_size = batch_size
+        self.gamma = gamma
+        self.weight_decay = weight_decay
+        self.exploration = exploration
+        self.eps_start = eps_start
+        self.eps_end = eps_end
+        self.eps_decay = eps_decay
+        self.target_update = target_update
+
         #Base Setup for the DQN Agent
         self.eps_threshold = 0
         self.Temp = 0
@@ -65,8 +66,8 @@ class DQNAgent():
         self.target_net.eval()
 
         # Added weight decay and LR for testing
-        self.optimizer = optim.RMSprop(self.policy_net.parameters(),lr = LR, weight_decay=WEIGHT_DECAY)
-        self.memory = ReplayMemory(10000)
+        self.optimizer = optim.RMSprop(self.policy_net.parameters(),lr = self.lr, weight_decay=self.weight_decay)
+        self.memory = ReplayMemory(self.replay_size)
 
         self.steps_done = 0
 
@@ -82,9 +83,9 @@ class DQNAgent():
 
         # Added new style of exploration for testing
         # Do not use
-        if EXPLORATION == "Boltzmann":
+        if self.exploration == "Boltzmann":
             action = self.boltzmann(action, obs)
-        elif EXPLORATION == "EPS":
+        elif self.exploration == "EPS":
             action = self.epsilon_greedy(action, obs)
         
         return action
@@ -119,7 +120,7 @@ class DQNAgent():
         sample = random.random()
         ### Updated the eps equation to be more readable (based on the pytorch implementation on 
         # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
-        self.eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(steps_done * -EPS_DECAY)
+        self.eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * np.exp(steps_done * -self.eps_decay)
         ###
         steps_done += 1
 
@@ -166,9 +167,9 @@ class DQNAgent():
         return action
 
     def optimize_model(self):
-        if len(self.memory) < BATCH_SIZE:
+        if len(self.memory) < self.batch_size:
             return
-        transitions = self.memory.sample(BATCH_SIZE)
+        transitions = self.memory.sample(self.batch_size)
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
@@ -195,19 +196,19 @@ class DQNAgent():
         # Pull out state action values that line up with previous actions
         # Check https://medium.com/analytics-vidhya/understanding-indexing-with-pytorch-gather-33717a84ebc4
         # for reference on how it works
-        state_action_values = torch.gather(state_action_values,1,action_batch_unsqueezed)
+        state_action_values = torch.gather(state_action_values,1,action_batch_unsqueezed.to(device))
 
         # Compute V(s_{t+1}) for all next states.
         # Expected values of actions for non_final_next_states are computed based
         # on the "older" target_net; selecting their best reward with max(1)[0].
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
-        next_state_values = torch.zeros(BATCH_SIZE, device=device)
-        next_state_values[non_final_mask] = self.target_net(non_final_next_states.view(BATCH_SIZE,105)).max(1)[0].detach()
+        next_state_values = torch.zeros(self.batch_size, device=device)
+        next_state_values[non_final_mask] = self.target_net(non_final_next_states.view(self.batch_size,105)).max(1)[0].detach()
         
         # Compute the expected Q values
         # Floated the rewards to prevent errors
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch.float()
+        expected_state_action_values = (next_state_values * self.gamma) + reward_batch.float().to(device)
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
@@ -220,15 +221,15 @@ class DQNAgent():
         self.optimizer.step()
 
         #Noisy net reset params
-        self.policy_net.reset_noise()
-        self.target_net.reset_noise()
+        #self.policy_net.reset_noise()
+        #self.target_net.reset_noise()
 
         # Sets the loss to be grabbed by training file
         self.loss = loss
     
     def update_target(self,episodes):
         # Updates the target model to reflect the current policy model
-         if episodes % TARGET_UPDATE == 0:
+         if episodes % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
     #######################################
@@ -302,13 +303,13 @@ class QNetwork(nn.Module):
         self.action_size = 12 * 11
         super(QNetwork,self).__init__() ## calls __init__ method of nn.Module class
         self.seed = torch.manual_seed(seed)
-        self.fc1 = NoisyLinear(observation_size[0],fc1_unit)
+        self.fc1 = nn.Linear(observation_size[0],fc1_unit)
         
         #############################################################################################
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        #self.fc2 = NoisyLinear(fc1_unit,self.action_size)
+        self.fc2 = nn.Linear(fc1_unit,self.action_size)
 
         #############################################################################################
 
@@ -317,11 +318,11 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
 
-        self.fc2_adv = NoisyLinear(fc1_unit,fc2_unit)
-        self.fc2_val = NoisyLinear(fc1_unit,fc2_unit)
+        #self.fc2_adv = NoisyLinear(fc1_unit,fc2_unit)
+        #self.fc2_val = NoisyLinear(fc1_unit,fc2_unit)
 
-        self.fc3_adv = NoisyLinear(fc2_unit,self.action_size)
-        self.fc3_val = NoisyLinear(fc2_unit,1)
+        #self.fc3_adv = NoisyLinear(fc2_unit,self.action_size)
+        #self.fc3_val = NoisyLinear(fc2_unit,1)
 
         ##############################################################################################
         
@@ -335,14 +336,14 @@ class QNetwork(nn.Module):
         if(type(x).__module__ == np.__name__):
             x = torch.from_numpy(x)
         
-        x = x.float()
+        x = x.float().to(device)
         x = F.relu(self.fc1(x))
         
         #############################################################################################
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        #x = self.fc2(x)
+        x = self.fc2(x)
 
         #############################################################################################
 
@@ -351,14 +352,14 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
         
-        adv = F.relu(self.fc2_adv(x))
-        val = F.relu(self.fc2_val(x))
+        #adv = F.relu(self.fc2_adv(x))
+        #val = F.relu(self.fc2_val(x))
 
-        adv = self.fc3_adv(adv)
-        val = self.fc3_val(val)
+        #adv = self.fc3_adv(adv)
+        #val = self.fc3_val(val)
 
-        advAverage = adv.mean()
-        x = val + adv - advAverage
+        #advAverage = adv.mean()
+        #x = val + adv - advAverage
 
         ##############################################################################################
 

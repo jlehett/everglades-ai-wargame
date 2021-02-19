@@ -6,13 +6,13 @@ import gym_everglades
 import pdb
 import sys
 import matplotlib.pyplot as plt
-from collections import deque 
+from collections import deque
 
 import numpy as np
 
 from everglades_server import server
 from agents.DQN.DQNAgent import DQNAgent
-from agents.random_actions import random_actions
+from agents.State_Machine.dfs_attack import dfs_attack
 
 #from everglades-server import generate_map
 
@@ -47,12 +47,32 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
+#########################
+#   Setup DQN Constants #
+#########################
+LR = 1e-6
+REPLAY_SIZE = 100000
+BATCH_SIZE = 256 # Updated
+GAMMA = 0.999
+LEAKY_SLOPE = 0.01 # Updated
+WEIGHT_DECAY = 0 # Leave at zero. Weight decay has so far caused massive collapse in network output
+EXPLORATION = "EPS" # Defines the exploration type. EPS is Epsilon Greedy, Boltzmann is Boltzmann Distribution Sampling
+### Updated the decay to finish later
+# Increase by one order of magnitude to finish around episode 200-250
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 0.00005
+###
+TARGET_UPDATE = 100 # Updated
+#########################
+
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space,0)
+players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space,0,LR,REPLAY_SIZE,BATCH_SIZE,
+                        GAMMA,WEIGHT_DECAY,EXPLORATION,EPS_START,EPS_END,EPS_DECAY,TARGET_UPDATE)
 names[0] = "DQN Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+players[1] = dfs_attack(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
 
@@ -103,8 +123,10 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
+    players[1].reset()
+
     while not done:
-        if i_episode % 20 == 0:
+        if i_episode % 25 == 0:
             env.render()
 
         ### Removed to save processing power
