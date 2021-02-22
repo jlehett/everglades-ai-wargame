@@ -12,7 +12,7 @@ import numpy as np
 
 from everglades_server import server
 from agents.Minimized.DQNAgent import DQNAgent
-from agents.State_Machine.random_actions import random_actions
+from agents.State_Machine.random_actions_delay import random_actions_delay
 
 #############################
 # Environment Config Setup  #
@@ -37,7 +37,7 @@ names = {}
 #################
 players[0] = DQNAgent(player_num=0, map_name=map_name)
 names[0] = "DQN Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent Delay'
 #################
 
@@ -45,7 +45,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 4000
+n_episodes = 5000
 
 #########################
 # Statistic variables   #
@@ -152,13 +152,39 @@ for i_episode in range(1, n_episodes+1):
 # Plot final charts #
 #####################
 fig, (ax1, ax2) = plt.subplots(2)
+
+#########################
+#   Epsilon Plotting    #
+#########################
+par1 = ax1.twinx()
+par2 = ax2.twinx()
+#########################
+
+######################
+#   Cumulative Plot  #
+######################
 ax1.set_ylim([0.0,1.0])
-ax2.set_ylim([0.0,1.0])
 fig.suptitle('Win rates')
 ax1.plot(np.arange(1, n_episodes+1),scores)
 ax1.set_ylabel('Cumulative win rate')
+ax1.yaxis.label.set_color('blue')
+par1.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
+par1.set_ylabel('Epsilon')
+par1.yaxis.label.set_color('green')
+#######################
+
+##################################
+#   Average Per K Episodes Plot  #
+##################################
+ax2.set_ylim([0.0,1.0])
+par2.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
+par2.set_ylabel('Epsilon')
+par2.yaxis.label.set_color('green')
 ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
 ax2.set_ylabel('Average win rate')
+ax2.yaxis.label.set_color('blue')
 ax2.set_xlabel('Episode #')
 plt.show()
-#####################
+#############################
+
+#########

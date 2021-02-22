@@ -45,7 +45,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 4000
+n_episodes = 300
 
 #########################
 # Statistic variables   #

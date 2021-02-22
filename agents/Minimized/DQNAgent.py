@@ -10,13 +10,13 @@ from collections import namedtuple
 import pickle
 import os
 
-TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
+TRAIN = True # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
 EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
-TRAIN_EPSILON_MIN = 0.1 # The minimum epsilon value to use during training (when TRAIN is set to True)
+TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
 
-NETWORK_SAVE_NAME = 'agents/Minimized/PerSwarmAgainstDelay3' # The name to use in saving the trained agent
-NETWORK_LOAD_NAME = 'agents/Minimized/PerSwarmAgainstDelay3' # The name to use in loading a saved agent
+NETWORK_SAVE_NAME = 'agents/Minimized/PerSwarmAgainstDelay4' # The name to use in saving the trained agent
+NETWORK_LOAD_NAME = 'agents/Minimized/PerSwarmAgainstDelay4' # The name to use in loading a saved agent
 #NETWORK_LOAD_NAME = None # The name to use in loading a saved agent
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
