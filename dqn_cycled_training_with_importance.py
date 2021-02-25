@@ -7,12 +7,29 @@ import pdb
 import sys
 import matplotlib.pyplot as plt
 from collections import deque 
+import random
 
 import numpy as np
 
 from everglades_server import server
 from agents.Minimized.DQNAgent import DQNAgent
 from agents.State_Machine.random_actions_delay import random_actions_delay
+from agents.State_Machine.random_actions import random_actions
+from agents.State_Machine.bull_rush import bull_rush
+from agents.State_Machine.all_cycle import all_cycle
+from agents.State_Machine.base_rush_v1 import base_rushV1
+from agents.State_Machine.cycle_rush_turn25 import Cycle_BRush_Turn25
+from agents.State_Machine.cycle_rush_turn50 import Cycle_BRush_Turn50
+from agents.State_Machine.cycle_target_node import Cycle_Target_Node
+from agents.State_Machine.cycle_target_node1 import cycle_targetedNode1
+from agents.State_Machine.cycle_target_node11 import cycle_targetedNode11
+from agents.State_Machine.cycle_target_node11P2 import cycle_targetedNode11P2
+from agents.State_Machine.random_actions_2 import random_actions_2
+from agents.State_Machine.same_commands_2 import same_commands_2
+from agents.State_Machine.same_commands import same_commands
+from agents.State_Machine.swarm_agent import SwarmAgent
+
+IMPORTANCE_UPDATE_AFTER = 50
 
 #############################
 # Environment Config Setup  #
@@ -37,8 +54,114 @@ names = {}
 #################
 players[0] = DQNAgent(player_num=0, map_name=map_name)
 names[0] = "DQN Agent"
-players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent Delay'
+
+# Create an array of all agents that could be used during training
+opposing_agents = [
+    {
+        'name': 'Random Agent Delay',
+        'agent': random_actions_delay(env.num_actions_per_turn, 1, map_name),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Random Agent',
+        'agent': random_actions(env.num_actions_per_turn, 1, map_name),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Bull Rush',
+        'agent': bull_rush(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'All Cycle',
+        'agent': all_cycle(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Base Rush v1',
+        'agent': base_rushV1(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Cycle Rush Turn 25',
+        'agent': Cycle_BRush_Turn25(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Cycle Rush Turn 50',
+        'agent': Cycle_BRush_Turn50(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Cycle Target Node',
+        'agent': Cycle_Target_Node(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Cycle Targeted Node 1',
+        'agent': cycle_targetedNode1(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Cycle Targeted Node 11',
+        'agent': cycle_targetedNode11(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Cycle Target Node 11 P2',
+        'agent': cycle_targetedNode11P2(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Random Actions 2',
+        'agent': random_actions_2(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Same Commands 2',
+        'agent': same_commands_2(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Same Commands',
+        'agent': same_commands(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    },
+    {
+        'name': 'Swarm Agent',
+        'agent': SwarmAgent(env.num_actions_per_turn, 1),
+        'games': 0,
+        'wins': 0,
+    }
+]
+
+# Create importance weights for all of the opposing agents
+opposing_agent_weights = [1.0 for i in range(len(opposing_agents))]
+
+# Define a function to update the weights based on win rate
+def updateAgentWeights():
+    opposing_agent_weights = []
+    for index, opposing_agent in enumerate(opposing_agents):
+        if opposing_agent['games'] == 0:
+            opposing_agent_weights.append(1.0)
+        else:
+            opposing_agent_weights.append(1.0 - opposing_agent['wins'] / opposing_agent['games'] + 0.05)
+    return opposing_agent_weights
+
 #################
 
 actions = {}
@@ -69,6 +192,13 @@ avgRewardVals = []
 #   Training Loop   #
 #####################
 for i_episode in range(1, n_episodes+1):
+    # Determine the opposing agent to play against
+    episode_opposing_agent = random.choices(opposing_agents, opposing_agent_weights)[0]
+
+    # Set the opposing agent for the episode
+    players[1] = episode_opposing_agent['agent']
+    names[1] = episode_opposing_agent['name']
+
     #################
     #   Game Loop   #
     #################
@@ -85,8 +215,8 @@ for i_episode in range(1, n_episodes+1):
 
     # Reset the reward average
     while not done:
-        if i_episode % 5 == 0:
-            env.render()
+        # if i_episode % 5 == 0:
+        #     env.render()
 
         # Get actions for each player
         for pid in players:
@@ -119,13 +249,16 @@ for i_episode in range(1, n_episodes+1):
     players[0].end_of_episode(i_episode)
 
     ### Updated win calculator to reflect new reward system
+    episode_opposing_agent['games'] += 1
     if(reward[0] > reward[1]):
         score += 1
         short_term_wr[(i_episode-1)%k] = 1
+        episode_opposing_agent['wins'] += 1
     elif(reward[0] == reward[1]):
         ties += 1
     else:
         losses += 1
+    
     ###
 
     #############################################
@@ -144,6 +277,16 @@ for i_episode in range(1, n_episodes+1):
         print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
+        # Print out the win rates against all agents
+        print('')
+        for opposing_agent in opposing_agents:
+            print('\rAgent: {}\tWR: {:.2f}\tGames: {}\n'.format(opposing_agent['name'], opposing_agent['wins'] / opposing_agent['games'], opposing_agent['games']))
+
+    # Update the opposing agent weights if appropriate
+    if i_episode % IMPORTANCE_UPDATE_AFTER == 0:
+        print('Updating Opposing Agent Weights...')
+        opposing_agent_weights = updateAgentWeights()
+        print('Opposing Agent Weights:', opposing_agent_weights)
         
     ################################
     env.close()

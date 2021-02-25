@@ -30,7 +30,7 @@ ENV_MAP = {
     'everglades-vision-stoch': 'EvergladesVisionStochastic-v0',
 }
 
-class same_commands:
+class same_commands_2:
     def __init__(self, action_space, player_num):
         self.action_space = action_space
         self.num_groups = NUM_GROUPS
