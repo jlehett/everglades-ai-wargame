@@ -90,13 +90,13 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 10
+n_episodes = 1000
 
 #########################
 # Statistic variables   #
 #########################
 scores = []
-k = 1
+k = 100
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
