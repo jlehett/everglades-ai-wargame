@@ -35,7 +35,7 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(player_num=0, map_name=map_name)
+players[0] = DQNAgent(player_num=0, map_name=map_name, train=True)
 names[0] = "DQN Agent"
 players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent Delay'
@@ -85,8 +85,8 @@ for i_episode in range(1, n_episodes+1):
 
     # Reset the reward average
     while not done:
-        if i_episode % 5 == 0:
-            env.render()
+        # if i_episode % 5 == 0:
+        #     env.render()
 
         # Get actions for each player
         for pid in players:
@@ -139,7 +139,7 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))

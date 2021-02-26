@@ -10,13 +10,14 @@ from collections import namedtuple
 import pickle
 import os
 
-TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
 EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
 TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
+TRAIN_LR_START = 1e-6 # The learning rate value to use when starting to train the network (when TRAIN is set to True)
+TRAIN_LR_MIN = 1e-10 # The minimum learning rate value to use during training (when TRAIN is set to True)
 
-NETWORK_SAVE_NAME = 'agents/Minimized/saved_models/CycledPerSwarm' # The name to use in saving the trained agent
-NETWORK_LOAD_NAME = 'agents/Minimized/saved_models/CycledPerSwarm' # The name to use in loading a saved agent
+NETWORK_SAVE_NAME = 'agents/Minimized/saved_models/test' # The name to use in saving the trained agent
+NETWORK_LOAD_NAME = 'agents/Minimized/saved_models/test' # The name to use in loading a saved agent
 #NETWORK_LOAD_NAME = None # The name to use in loading a saved agent
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
@@ -32,9 +33,9 @@ BATCH_SIZE = 256 # The number of inputs to train on at one time
 TARGET_UPDATE = 500 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.99 # The amount to discount the future rewards by
-LEARNING_RATE = 1e-6 # The learning rate to be used by the optimizer
 N_STEP = 1 # The number of steps to use in multi-step learning
 EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
+LR_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -43,6 +44,7 @@ class DQNAgent():
         self,
         player_num,
         map_name,
+        train=True,
     ):
         """
         Initialize a DQNAgent that will be used to play the Everglades game.
@@ -53,12 +55,14 @@ class DQNAgent():
         @param map_name The name of the map file to load in
         """
         # Store variables
-        if TRAIN:
+        self.learning_rate = TRAIN_LR_START
+        self.train = train
+        if self.train:
             self.epsilon = TRAIN_EPSILON_START
         else:
             self.epsilon = EVALUATE_EPSILON
         self.previous_episodes = 0
-        self.training = TRAIN
+        self.training = self.train
 
         # Create the NStepModule
         self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
@@ -72,7 +76,7 @@ class DQNAgent():
             save_file = open(NETWORK_LOAD_NAME + '.pickle', 'rb')
             save_file_data = pickle.load(save_file)
             self.policy_net.load_state_dict(save_file_data.get('state_dict'))
-            if TRAIN:
+            if self.train:
                 self.epsilon = save_file_data.get('epsilon')
                 self.previous_episodes = save_file_data.get('episodes')
             save_file.close()
@@ -83,9 +87,6 @@ class DQNAgent():
         # Prevent the target net from learning during training; only the policy
         # net should be learning
         self.target_net.eval()
-
-        # Set the optimizer to use in training the network
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
 
         # Set up the map data to use
         with open('./config/' + map_name) as fid:
@@ -282,13 +283,16 @@ class DQNAgent():
         without training if there is not enough memory in the experience replay.
         """
         # If training is not set to true, we do not want to optimize the model
-        if not TRAIN:
+        if not self.train:
             return
         # If the NStepModule's experience replay isn't large enough, we should bail out.
         # Otherwise, we can grab sample data from the replay memory.
         if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
             return
         transitions = self.NStepModule.sampleReplayMemory(BATCH_SIZE)
+
+        # Set the optimizer to use in training the network using the latest learning rate
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.learning_rate)
 
         # Create the batch of data to use
         batch = Transition(*zip(*transitions))
@@ -331,16 +335,21 @@ class DQNAgent():
         # Add the played game to memory
         self.NStepModule.addGameToReplayMemory()
         # Update target network every UPDATE_TARGET_AFTER episodes
-        if episodes % TARGET_UPDATE == 0 and TRAIN:
+        if episodes % TARGET_UPDATE == 0 and self.train:
             self.target_net.load_state_dict(self.policy_net.state_dict())
         # Save the network every SAVE_NETWORK_AFTER episodes
-        if episodes % SAVE_NETWORK_AFTER == 0 and TRAIN:
+        if episodes % SAVE_NETWORK_AFTER == 0 and self.train:
             self.save_network(episodes)
         # Decay epsilon
-        if TRAIN:
+        if self.train:
             self.epsilon *= EPS_DECAY
             if self.epsilon < TRAIN_EPSILON_MIN:
                 self.epsilon = TRAIN_EPSILON_MIN
+        # Decay learning rate
+        if self.train:
+            self.learning_rate *= LR_DECAY
+            if self.learning_rate < TRAIN_LR_MIN:
+                self.learning_rate = TRAIN_LR_MIN
 
     def save_network(self, episodes):
         """
