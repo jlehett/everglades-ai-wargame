@@ -90,10 +90,10 @@ class PPOAgent:
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
             # Original from github branch did not use torch.mean() which left the loss as a tensor when it finished.
             # Found another implementation that uses torch.mean() which has fixed the loss and improved the network
-            surr_min = torch.mean(torch.min(surr1, surr2))
-            pre_loss = 0.5*self.MSE(state_values, rewards)
-            entropy_calc = 0.01*torch.mean(dist_entropy)
-            loss = -torch.mean(surr_min) + pre_loss - entropy_calc
+            actor_loss = torch.mean(torch.min(surr1, surr2))
+            critic_loss = 0.5*self.MSE(state_values, rewards)
+            entropy = 0.01*torch.mean(dist_entropy)
+            loss = -actor_loss + critic_loss - entropy
 
             # take gradient step
             self.optimizer.zero_grad()

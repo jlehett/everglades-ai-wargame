@@ -51,25 +51,15 @@ class EvergladesEnv(gym.Env):
         else:
             ### Use the score calculated in server.game_end (used for non game ending rounds as well)
             # Score is calculated from number of nodes held for a given amount of time
-            # Should incentivize the agent to be more agressive
             # Scores range from 0- ~3000 points
-            # May want to attempt normalization in the future (make sure to change win score back to 1 if so)
-            # Normalized by MAX_SCORE
-            # Subtraction puts emphasis on having more points than the other player. Should force agent to always try and take
-            # Another objective if its score is negative
-            reward[0] = scores[0] / MAX_SCORE
-            #reward_0 = reward[0]
-            reward[1] = scores[1] / MAX_SCORE
-            #reward[0] -= reward[1]
-            #reward[1] -= reward_0
+            # Used in new reward system for calculating the reward if the agent wins
+            reward[0] = scores[0]
+            reward[1] = scores[1]
             ######################################################
 
             # Percent Difference Reward
             #reward[0] = (scores[0]-scores[1]) / ((scores[0] + scores[1]) / 2)
             #reward[1] = (scores[1]-scores[0]) / ((scores[0] + scores[1]) / 2)
-
-            #if reward[0] < 0:
-            #    reward[0] = 0
 
         # return state, reward, done, info
         return observations, reward, done, {}

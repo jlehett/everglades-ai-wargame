@@ -6,7 +6,8 @@ import gym_everglades
 import pdb
 import sys
 import matplotlib.pyplot as plt
-from collections import deque 
+from collections import deque
+import torch
 
 import numpy as np
 
@@ -31,6 +32,14 @@ debug = False
 env = gym.make('everglades-v0')
 players = {}
 names = {}
+
+#####################
+#   Setup For GPU   #
+#####################
+device = torch.device("cpu")
+#device_name = torch.cuda.get_device_name(0)
+#has_gpu = torch.cuda.is_available()
+#####################
 
 #################
 # Setup agents  #
@@ -62,8 +71,15 @@ current_eps = 0
 epsilonVals = []
 current_loss = 0
 lossVals = []
-average_reward = 0
-avgRewardVals = []
+final_score = 0
+short_term_final_score = np.zeros((k,)) # Used to average win rates
+short_term_final_scores = [0.5] # Average win rates per k episodes
+q_values = 0
+qVals = []
+reward = {0: 0, 1: 0}
+reward_decay = 0
+reward_divider = 1000
+#########################
 
 #####################
 #   Training Loop   #
@@ -85,8 +101,8 @@ for i_episode in range(1, n_episodes+1):
 
     # Reset the reward average
     while not done:
-        # if i_episode % 5 == 0:
-        #     env.render()
+        if i_episode % 5 == 0:
+            env.render()
 
         # Get actions for each player
         for pid in players:
@@ -101,12 +117,28 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
+
+        #### REWARD DECAY ####
+        # Setup reward decay
+        won = False
+        if not done:
+            final_score = reward[0] # gets the final score before end of game turn
+            reward[0] = 0.01 # default reward for non end of game turns
+        elif reward[0] < reward[1]: # if agent loses
+            reward[0] = reward[0] - reward_decay # negative reward that decays over time for losing
+        else:
+            if reward[0] > reward[1]:
+                won = True
+            reward[0] = final_score / reward_divider # positive reward for winning (scores will generally be between 300 and 3500)
+        #### REWARD DECAY ####
+
         players[0].remember_game_state(
             prev_observation,
             observations[0],
             actions[0],
             reward[0]
         )
+        
         players[0].optimize_model()
         #########################
 
@@ -119,11 +151,9 @@ for i_episode in range(1, n_episodes+1):
     players[0].end_of_episode(i_episode)
 
     ### Updated win calculator to reflect new reward system
-    if(reward[0] > reward[1]):
+    if(won):
         score += 1
         short_term_wr[(i_episode-1)%k] = 1
-    elif(reward[0] == reward[1]):
-        ties += 1
     else:
         losses += 1
     ###
@@ -134,6 +164,11 @@ for i_episode in range(1, n_episodes+1):
     scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
     epsilonVals.append(current_eps)
+
+    lossVals.append(current_loss)
+    short_term_final_score[(i_episode-1)%k] = final_score
+    q_values = q_values / 150
+    qVals.append(q_values)
     #############################################
 
     #################################
@@ -144,20 +179,30 @@ for i_episode in range(1, n_episodes+1):
         print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
-        
+
+        short_term_final_scores.append(np.mean(short_term_final_score))
+        short_term_final_score = np.zeros((k,), dtype=int)
+
+        #### REWARD DECAY ####
+        reward_decay -= 0.5 # this reduces the reward decay after k episodes to punish the agent more for losing overtime
+        #### REWARD DECAY ####
+
     ################################
     env.close()
 
 #####################
 # Plot final charts #
 #####################
-fig, (ax1, ax2) = plt.subplots(2)
+fig, ((ax1, ax3),(ax2,ax4)) = plt.subplots(2,2)
 
 #########################
 #   Epsilon Plotting    #
 #########################
 par1 = ax1.twinx()
 par2 = ax2.twinx()
+par4 = ax2.twinx()
+par3.spines["right"].set_position(("axes", 1.1))
+par4.spines["right"].set_position(("axes", 1.1))
 #########################
 
 ######################
@@ -183,7 +228,30 @@ par2.yaxis.label.set_color('green')
 ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
 ax2.set_ylabel('Average win rate')
 ax2.yaxis.label.set_color('blue')
+
+par3.tick_params(axis='y', colors='orange')
+par4.tick_params(axis='y', colors="orange")
 ax2.set_xlabel('Episode #')
+#############################
+
+#########################
+#   Average Reward Plot #
+#########################
+ax3.plot(np.arange(0, n_episodes+1,k),short_term_final_scores)
+ax3.set_ylabel('Average Final Scores')
+ax3.yaxis.label.set_color('blue')
+#########################
+
+#########################
+#   Average Q Val Plot  #
+#########################
+ax4.plot(np.arange(0, n_episodes),qVals)
+ax4.set_ylabel('Average Q Values')
+ax4.yaxis.label.set_color('blue')
+ax4.set_xlabel('Episode #')
+#########################
+
+fig.tight_layout(pad=2.0)
 plt.show()
 #############################
 

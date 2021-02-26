@@ -12,9 +12,9 @@ import os
 
 EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
-TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
+TRAIN_EPSILON_MIN = 0.01 # The minimum epsilon value to use during training (when TRAIN is set to True)
 TRAIN_LR_START = 1e-6 # The learning rate value to use when starting to train the network (when TRAIN is set to True)
-TRAIN_LR_MIN = 1e-10 # The minimum learning rate value to use during training (when TRAIN is set to True)
+TRAIN_LR_MIN = 1e-6 # The minimum learning rate value to use during training (when TRAIN is set to True)
 
 NETWORK_SAVE_NAME = 'agents/Minimized/saved_models/test' # The name to use in saving the trained agent
 NETWORK_LOAD_NAME = 'agents/Minimized/saved_models/test' # The name to use in loading a saved agent
