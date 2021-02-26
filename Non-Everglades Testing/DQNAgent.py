@@ -28,10 +28,9 @@ steps_done = 0
 # Use custom reward shaping
 custom_reward = False
 
-device = torch.device("cpu")
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#device_name = torch.cuda.get_device_name(0)
-#has_gpu = torch.cuda.is_available()
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device_name = torch.cuda.get_device_name(0)
+has_gpu = torch.cuda.is_available()
 #print(torch.cuda.version)
 
 class DQNAgent():
@@ -53,10 +52,10 @@ class DQNAgent():
         #Base Setup for the DQN Agent
         self.eps_threshold = 0
         self.Temp = 0
-        self.action_space = action_space
+        self.action_space = action_space.n
         self.num_groups = 12
 
-        self.n_actions = action_space
+        self.n_actions = action_space.n
         self.n_observations = observation_space.shape
         self.seed = 1
 
@@ -64,6 +63,7 @@ class DQNAgent():
         self.policy_net = QNetwork(self.n_observations,self.n_actions,self.seed).to(device)
         self.target_net = QNetwork(self.n_observations,self.n_actions,self.seed).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.policy_net.train()
         self.target_net.eval()
 
         # Added weight decay and LR for testing
@@ -77,17 +77,16 @@ class DQNAgent():
 
         self.shape = (self.num_actions, 2)
         self.loss = 0
-        self.q_values = np.zeros((132))
+        self.q_values = np.zeros((2))
     
     def get_action(self, obs):
-        action = np.zeros(self.shape)
         obs = torch.from_numpy(obs).to(device)
         # Added new style of exploration for testing
         # Do not use
         if self.exploration == "Boltzmann":
             action = self.boltzmann(action, obs)
         elif self.exploration == "EPS":
-            action = self.epsilon_greedy(action, obs)
+            action = self.epsilon_greedy(obs)
         
         return action
 
@@ -116,7 +115,7 @@ class DQNAgent():
         action[:,1] = chosen_nodes
         return action
 
-    def epsilon_greedy(self, action, obs):
+    def epsilon_greedy(self, obs):
         global steps_done
         sample = random.random()
         ### Updated the eps equation to be more readable (based on the pytorch implementation on 
@@ -126,12 +125,11 @@ class DQNAgent():
         steps_done += 1
 
         if sample > self.eps_threshold:
-            action_qs = self.policy_net(obs)
-            action = self.filter_actions(action, action_qs)
-            self.q_values = action_qs
+            policy_out = self.policy_net(obs)
+            self.q_values = policy_out.cpu().detach().numpy()
+            action = policy_out.max(0)[1].item()
         else:
-            action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
-            action[:, 1] = np.random.choice(self.num_nodes, self.num_actions, replace=False)
+            action= np.random.randint(2)
 
         return action
 
@@ -187,7 +185,7 @@ class DQNAgent():
                                                 if s is not None])
         state_batch = torch.stack([s for s in batch.state])
         action_batch = torch.cat([s.unsqueeze(0) for s in batch.action])
-        reward_batch = torch.cat([s for s in batch.reward])
+        reward_batch = torch.cat([s.unsqueeze(0) for s in batch.reward])
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
@@ -197,7 +195,7 @@ class DQNAgent():
         # Sets action_batch to be column-wise instead of row-wise for torch.batch()
         # Using Long() for indexing requirements per torch.batch()
         # No longer require unsqueezing with batched actions
-        action_batch_unsqueezed = action_batch.long()#.unsqueeze(-1)
+        action_batch_unsqueezed = action_batch.long().unsqueeze(-1)
 
         # Pull out state action values that line up with previous actions
         # Check https://medium.com/analytics-vidhya/understanding-indexing-with-pytorch-gather-33717a84ebc4
@@ -211,16 +209,15 @@ class DQNAgent():
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(self.batch_size, device=device)
         # Used topk() instead of max to grab the top 7 actions instead of the top 1 action
-        next_state_values = self.target_net(non_final_next_states.view(self.batch_size,105)).topk(7,1)[0]#.max(1)[0].detach()
+        next_state_values = self.target_net(non_final_next_states.view(self.batch_size,4)).max(1)[0].detach()
         
         # Compute the expected Q values
         # Floated the rewards to prevent errors
         # Added repeat to rewards so the tensor will line up with next_state_values for addition
-        reward_batch = reward_batch.unsqueeze(1).detach().repeat(1,7)
+        #reward_batch = reward_batch.unsqueeze(1).detach()
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
-
         # Compute Huber loss
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
+        loss = F.smooth_l1_loss(state_action_values.type(torch.DoubleTensor), expected_state_action_values.type(torch.DoubleTensor).unsqueeze(1))
 
         # Optimize the model
         self.optimizer.zero_grad()
@@ -309,7 +306,6 @@ class QNetwork(nn.Module):
             fc1_unit (int): Number of nodes in first hidden layer
             fc2_unit (int): Number of nodes in second hidden layer
         """
-        self.action_size = 12 * 11
         super(QNetwork,self).__init__() ## calls __init__ method of nn.Module class
         self.seed = torch.manual_seed(seed)
         self.fc1 = nn.Linear(observation_size[0],fc1_unit)
@@ -318,7 +314,7 @@ class QNetwork(nn.Module):
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        self.fc2 = nn.Linear(fc1_unit,self.action_size)
+        self.fc2 = nn.Linear(fc1_unit,action_size)
 
         #############################################################################################
 
@@ -327,11 +323,11 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
 
-        #self.fc2_adv = NoisyLinear(fc1_unit,fc2_unit)
-        #self.fc2_val = NoisyLinear(fc1_unit,fc2_unit)
+        #self.fc2_adv = nn.Linear(fc1_unit,fc2_unit)
+        #self.fc2_val = nn.Linear(fc1_unit,fc2_unit)
 
-        #self.fc3_adv = NoisyLinear(fc2_unit,self.action_size)
-        #self.fc3_val = NoisyLinear(fc2_unit,1)
+        #self.fc3_adv = nn.Linear(fc2_unit,action_size)
+        #self.fc3_val = nn.Linear(fc2_unit,1)
 
         ##############################################################################################
         
@@ -374,15 +370,6 @@ class QNetwork(nn.Module):
         ##############################################################################################
 
         return x
-    
-    def reset_noise(self):
-        self.fc1.reset_noise()
-        #self.fc2.reset_noise() # Non-dueling
-
-        self.fc2_adv.reset_noise()
-        self.fc2_val.reset_noise()
-        self.fc3_adv.reset_noise()
-        self.fc3_val.reset_noise()
 
 import math
 import torch

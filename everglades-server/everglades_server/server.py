@@ -819,9 +819,21 @@ class EvergladesGame:
         date_frmt = date.strftime('%Y.%m.%d-%H.%M.%S')
         self.dat_dir = self.output_dir + '/' + self.evgMap.name + '_' + date_frmt
 
-        oldmask = os.umask(000)
-        os.mkdir(self.dat_dir,mode=0o777)
-        os.umask(oldmask)
+        # Allow for multiple telemetry files (Enables parallel processing)
+        while True:
+            try:
+                oldmask = os.umask(000)
+                os.mkdir(self.dat_dir,mode=0o777)
+                os.umask(oldmask)
+                break
+            except:
+                date = datetime.datetime.today()
+                date_frmt = date.strftime('%Y.%m.%d-%H.%M.%S')
+                self.dat_dir = self.output_dir + '/' + self.evgMap.name + '_' + date_frmt
+
+        #oldmask = os.umask(000)
+        #os.mkdir(self.dat_dir,mode=0o777)
+        #os.umask(oldmask)
         assert( os.path.isdir(self.dat_dir) ), 'Could not create telemetry output directory'
 
         self.output = {}
