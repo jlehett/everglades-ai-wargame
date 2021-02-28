@@ -13,12 +13,9 @@ import os
 EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
 TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
-TRAIN_LR_START = 1e-6 # The learning rate value to use when starting to train the network (when TRAIN is set to True)
-TRAIN_LR_MIN = 1e-10 # The minimum learning rate value to use during training (when TRAIN is set to True)
+TRAIN_LR_START = 1e-8 # The learning rate value to use when starting to train the network (when TRAIN is set to True)
+TRAIN_LR_MIN = 1e-8 # The minimum learning rate value to use during training (when TRAIN is set to True)
 
-NETWORK_SAVE_NAME = 'agents/Minimized/saved_models/test' # The name to use in saving the trained agent
-NETWORK_LOAD_NAME = 'agents/Minimized/saved_models/test' # The name to use in loading a saved agent
-#NETWORK_LOAD_NAME = None # The name to use in loading a saved agent
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
 NUM_GROUPS = 12 # The number of unit groups in the Everglades environment for the agent
@@ -45,6 +42,8 @@ class DQNAgent():
         player_num,
         map_name,
         train=True,
+        network_save_name=None,
+        network_load_name=None,
     ):
         """
         Initialize a DQNAgent that will be used to play the Everglades game.
@@ -55,7 +54,15 @@ class DQNAgent():
         @param map_name The name of the map file to load in
         """
         # Store variables
+        self.network_save_name = network_save_name
+        self.network_load_name = network_load_name
+        self.fc1_size = FC1_SIZE
         self.learning_rate = TRAIN_LR_START
+        self.batch_size = BATCH_SIZE
+        self.target_update = TARGET_UPDATE
+        self.memory_size = MEMORY_SIZE
+        self.n_step = N_STEP
+        self.gamma = GAMMA
         self.train = train
         if self.train:
             self.epsilon = TRAIN_EPSILON_START
@@ -64,26 +71,41 @@ class DQNAgent():
         self.previous_episodes = 0
         self.training = self.train
 
-        # Create the NStepModule
-        self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
-
-        # Set up the network
-        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
-        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
-
-        # If a save file is specified and the file exists, load the save file
-        if NETWORK_LOAD_NAME and os.path.exists(NETWORK_LOAD_NAME + '.pickle'):
-            save_file = open(NETWORK_LOAD_NAME + '.pickle', 'rb')
+        # Load save information if it exists
+        save_file_data = None
+        if self.network_load_name and os.path.exists(self.network_load_name + '.pickle'):
+            save_file = open(self.network_load_name + '.pickle', 'rb')
             save_file_data = pickle.load(save_file)
-            self.policy_net.load_state_dict(save_file_data.get('state_dict'))
+            save_file.close()
+
+        if save_file_data:
+            self.fc1_size = save_file_data.get('fc1_size')
+            self.batch_size = save_file_data.get('batch_size')
+            self.n_step = save_file_data.get('n_step')
+            self.gamma = save_file_data.get('gamma')
+            self.memory_size = save_file_data.get('memory_size')
+
             if self.train:
                 self.epsilon = save_file_data.get('epsilon')
                 self.previous_episodes = save_file_data.get('episodes')
-            save_file.close()
-            print('Loaded Saved Network:', NETWORK_LOAD_NAME)
 
-        # Load the policy network's values into the target network
-        self.target_net.load_state_dict(self.policy_net.state_dict())
+        # Create the NStepModule
+        self.NStepModule = NStepModule(self.n_step, self.gamma, self.memory_size)
+
+        # Set up the network
+        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size)
+        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size)
+
+        # Load up the save policy network data if it exists
+        if save_file_data:
+            self.policy_net.load_state_dict(save_file_data.get('policy_state_dict'))
+            self.target_net.load_state_dict(save_file_data.get('target_state_dict'))
+            print('Loaded Saved Network:', self.network_load_name)
+        else:
+            # Otherwise, we need to copy the policy network's weights to the target network to
+            # begin training
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+        
         # Prevent the target net from learning during training; only the policy
         # net should be learning
         self.target_net.eval()
@@ -167,7 +189,7 @@ class DQNAgent():
             swarm_in_transit = obs[48+5*swarm_number]
             if swarm_in_transit == 0:
                 swarm_node_loc = int(obs[45+5*swarm_number] - 1)
-                allies_on_node[swarm_node_loc-1] += 1
+                allies_on_node[swarm_node_loc] += 1
         return allies_on_node
 
     def get_all_swarm_decisions(self, obs):
@@ -287,9 +309,9 @@ class DQNAgent():
             return
         # If the NStepModule's experience replay isn't large enough, we should bail out.
         # Otherwise, we can grab sample data from the replay memory.
-        if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
+        if not self.NStepModule.isMemoryLargeEnoughToTrain(self.batch_size):
             return
-        transitions = self.NStepModule.sampleReplayMemory(BATCH_SIZE)
+        transitions = self.NStepModule.sampleReplayMemory(self.batch_size)
 
         # Set the optimizer to use in training the network using the latest learning rate
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.learning_rate)
@@ -308,14 +330,14 @@ class DQNAgent():
         state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
 
         # Compute the swarm's future value for next states
-        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
+        next_state_swarms_predicted_qs_batch = torch.zeros((self.batch_size, 12, self.num_nodes), device=device)
         for swarm_num in range(NUM_GROUPS):
             next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
         # Limit future value to the best q value for each swarm
         max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2)
         max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1)
         # Compute the estimated future reward
-        estimated_future_reward = (max_next_state_predicted_q_batch * (GAMMA ** N_STEP) + reward_batch).to(device)
+        estimated_future_reward = (max_next_state_predicted_q_batch * (self.gamma ** self.n_step) + reward_batch).to(device)
 
         # Compute the loss
         loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
@@ -334,11 +356,21 @@ class DQNAgent():
         """
         # Add the played game to memory
         self.NStepModule.addGameToReplayMemory()
+        # Call the rest of the end of episode logic
+        self.end_of_episode_not_play(episodes)
+
+    def end_of_episode_not_play(self, episodes):
+        """
+        Performs the end of episode updates without the need of having played this episode.
+        To be used in self-play tournaments.
+
+        @param episodes The number of episodes that have elapsed since the current training session began
+        """
         # Update target network every UPDATE_TARGET_AFTER episodes
-        if episodes % TARGET_UPDATE == 0 and self.train:
+        if (episodes + self.previous_episodes) % self.target_update == 0 and self.train:
             self.target_net.load_state_dict(self.policy_net.state_dict())
         # Save the network every SAVE_NETWORK_AFTER episodes
-        if episodes % SAVE_NETWORK_AFTER == 0 and self.train:
+        if (episodes + self.previous_episodes) % SAVE_NETWORK_AFTER == 0 and self.train:
             self.save_network(episodes)
         # Decay epsilon
         if self.train:
@@ -357,12 +389,19 @@ class DQNAgent():
 
         @param episodes The number of episodes that have elapsed since the current training session began
         """
-        if NETWORK_SAVE_NAME:
-            save_file = open(NETWORK_SAVE_NAME + '.pickle', 'wb')
+        if self.network_save_name:
+            save_file = open(self.network_save_name + '.pickle', 'wb')
             pickle.dump({
-                'state_dict': self.policy_net.state_dict(),
+                'policy_state_dict': self.policy_net.state_dict(),
+                'target_state_dict': self.target_net.state_dict(),
                 'epsilon': self.epsilon,
                 'episodes': episodes + self.previous_episodes,
+                'fc1_size': self.fc1_size,
+                'batch_size': self.batch_size,
+                'target_update': self.target_update,
+                'memory_size': self.memory_size,
+                'gamma': self.gamma,
+                'n_step': self.n_step,
             }, save_file)
             save_file.close()
             print('Saved Network')

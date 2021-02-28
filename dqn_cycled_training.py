@@ -50,7 +50,13 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(player_num=0, map_name=map_name)
+players[0] = DQNAgent(
+    player_num=0,
+    map_name=map_name,
+    train=False,
+    network_save_name=None,
+    network_load_name=None,
+)
 names[0] = "DQN Agent"
 
 # Create an array of all agents that could be used during training

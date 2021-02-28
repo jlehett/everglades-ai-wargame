@@ -12,7 +12,6 @@ import numpy as np
 
 from everglades_server import server
 from agents.Minimized.DQNAgent import DQNAgent
-from agents.State_Machine.random_actions import random_actions
 
 #############################
 # Environment Config Setup  #
@@ -38,13 +37,19 @@ names = {}
 players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
-    train=False,
-    network_save_name='agents/Minimized/saved_models/68',
-    network_load_name='agents/Minimized/saved_models/68',
+    train=True,
+    network_save_name='agents/Minimized/saved_models/self-player-0',
+    network_load_name='agents/Minimized/saved_models/self-player-0',
 )
-names[0] = "DQN Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent Delay'
+names[0] = "DQN Agent - Player 0"
+players[1] = DQNAgent(
+    player_num=1,
+    map_name=map_name,
+    train=True,
+    network_save_name='agents/Minimized/saved_models/self-player-1',
+    network_load_name='agents/Minimized/saved_models/self-player-1',
+)
+names[1] = "DQN Agent - Player 1"
 #################
 
 actions = {}
@@ -91,15 +96,17 @@ for i_episode in range(1, n_episodes+1):
 
     # Reset the reward average
     while not done:
-        if i_episode % 5 == 0:
-            env.render()
+        # if i_episode % 5 == 0:
+        #     env.render()
 
         # Get actions for each player
         for pid in players:
             actions[pid] = players[pid].get_action( observations[pid] )
 
-        # Grab previos observation for agent
-        prev_observation = observations[0]
+        # Grab previous observation for agent
+        prev_observations = [None, None]
+        prev_observations[0] = observations[0]
+        prev_observations[1] = observations[1]
 
         # Update env
         observations, reward, done, info = env.step(actions)
@@ -108,12 +115,20 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
         players[0].remember_game_state(
-            prev_observation,
+            prev_observations[0],
             observations[0],
             actions[0],
             reward[0]
         )
         players[0].optimize_model()
+
+        players[1].remember_game_state(
+            prev_observations[1],
+            observations[1],
+            actions[1],
+            reward[1]
+        )
+        players[1].optimize_model()
         #########################
 
         current_eps = players[0].epsilon
@@ -123,6 +138,7 @@ for i_episode in range(1, n_episodes+1):
     # End of episode agent updates #
     ################################
     players[0].end_of_episode(i_episode)
+    players[1].end_of_episode(i_episode)
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
