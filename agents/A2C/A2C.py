@@ -11,13 +11,11 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = "cpu"
 
 # Hyperparameters
 learning_rate = 1e-2
 gamma = 0.999
 epsilon = 0.99
-hidden_layer_size = 528
 
 SavedAction = namedtuple('SavedAction', ['log_prob','value'])
 
@@ -33,7 +31,7 @@ class A2C():
 
     def get_action(self, obs):
         action = np.zeros(self.shape)
-        chosen_indices = self.model.act(obs)
+        chosen_indices = self.model.act(observation)
 
         # Unwravel action indices to output to the env
         chosen_units = chosen_indices // 12
@@ -80,26 +78,13 @@ class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(ActorCritic, self).__init__()
         # First layer
-        #self.fc1 = nn.Linear(state_dim, hidden_layer_size)
+        self.fc1 = nn.Linear(state_dim, 528)
 
         # actor
-        # self.actor = nn.Linear(hidden_layer_size, action_dim)
+        self.actor = nn.Linear(528, action_dim)
 
         # critic, return a scalar value
-        #self.critic = nn.Linear(hidden_layer_size, 1) 
-
-        self.critic = nn.Sequential(
-            nn.Linear(state_dim, hidden_layer_size),
-            nn.ReLU(),
-            nn.Linear(hidden_layer_size, 1)
-        )
-        
-        self.actor = nn.Sequential(
-            nn.Linear(state_dim, hidden_layer_size),
-            nn.ReLU(),
-            nn.Linear(hidden_layer_size, action_dim),
-            nn.Softmax(dim=-1), # dim should be either -1 or 0, not sure which but PPO has -1
-        )
+        self.critic = nn.Linear(528, 1) 
 
         self.policy_action_value = []
         self.rewards = []
