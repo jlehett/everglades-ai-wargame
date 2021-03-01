@@ -50,12 +50,11 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = A2C(env.num_actions_per_turn, env.observation_space,0)
+players[0] = A2C(env.num_actions_per_turn, env.observation_space,8)
 names[0] = "DQN Agent"
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
-
 
 actions = {}
 
@@ -125,7 +124,7 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
-        reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
+        #reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
 
         # Update the agent's average reward
         average_reward += reward[0]
