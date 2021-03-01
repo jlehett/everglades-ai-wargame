@@ -20,9 +20,12 @@ epsilon = 0.99
 SavedAction = namedtuple('SavedAction', ['log_prob','value'])
 
 class A2C():
-    def __init__(self,action_space,observation_space, player_num):
+    def __init__(self,action_space,observation_space, player_num, K_epochs):
         self.state_space = observation_space.shape[0]
         self.action_space = action_space
+        self.K_epochs = K_epochs
+
+        self.memory = Memory()
         
         self.shape = (self.action_space, 2)
 
@@ -31,7 +34,7 @@ class A2C():
 
     def get_action(self, obs):
         action = np.zeros(self.shape)
-        chosen_indices = self.model.act(observation)
+        chosen_indices = self.model.act(obs, self.memory)
 
         # Unwravel action indices to output to the env
         chosen_units = chosen_indices // 12
@@ -40,18 +43,17 @@ class A2C():
         action[:,0] = chosen_units
         action[:,1] = chosen_nodes
 
-        log_prob = evaluate(action)
-        
+        #log_prob = self.model.evaluate(obs, action)
         return action
 
     def optimize_model(self):
         R = 0
-        save_actions = model.save_actions
+        save_actions = self.model.save_actions
         policy_loss = []
         value_loss = []
         rewards = []
         
-        for r in model.rewards[::-1]:
+        for r in self.model.rewards[::-1]:
             R = r + gamma * R
             rewrds.insert(0,R)
         
@@ -59,17 +61,39 @@ class A2C():
         rewards = (rewards - rewards.mean()) / (rewards.std() + epsilon)
 
         for (log_prob, value), r in zip(save_actions, rewards):
+            
             reward = r - value.item()
             policy_loss.append(-log_prob * reward)
             value_loss.append(F.smooth_l1_loss(value, torch.tensor([r])))
 
-        optimizer.zero_grad()
+        print('policy loss', policy_loss)
+        print('value loss', value_loss)
+        self.optimizer.zero_grad()
         loss = torch.stack(policy_loss).sum() + torch.stack(value_loss).sum()
         loss.backward()
-        optimizer.step()
+        self.optimizer.step()
 
-        del model.rewards[:]
-        del model.save_actions[:]
+        del self.model.rewards[:]
+        del self.model.save_actions[:]
+
+####################
+#   Memory Class   #
+####################
+
+class Memory:
+    def __init__(self):
+        self.actions = []
+        self.states = []
+        self.logprobs = []
+        self.rewards = []
+        self.is_terminals = []
+
+    def clear_memory(self):
+        del self.actions[:]
+        del self.states[:]
+        del self.logprobs[:]
+        del self.rewards[:]
+        del self.is_terminals[:]
 
 #########################
 #   Actor Critic Class   #
@@ -81,31 +105,41 @@ class ActorCritic(nn.Module):
         self.fc1 = nn.Linear(state_dim, 528)
 
         # actor
-        self.actor = nn.Linear(528, action_dim)
+        self.actor = nn.Sequential(
+            nn.Linear(state_dim, 528),
+            nn.Linear(528, action_dim),
+            nn.Softmax(dim=-1)
+        )
 
         # critic, return a scalar value
-        self.critic = nn.Linear(528, 1) 
+        self.critic = nn.Sequential(
+            nn.Linear(state_dim, 528),
+            nn.Linear(528, action_dim)
+        )
 
-        self.policy_action_value = []
+        self.save_actions = []
         self.rewards = []
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
+        #x = F.relu(self.fc1(x))
         action_score = self.actor(x)
         state_value = self.critic(x)
+        return action_score, state_value
 
-        return F.softmax(action_score, dim=-1), state_value
-
-    def act(self, state):
-        state = torch.from_numpy(state).float().to(device)
+    def act(self, state, memory):
+        state = torch.from_numpy(state).float()
         action_probs = self.actor(state)
-
         # Uses Boltzmann style exploration by sampling from distribution
         dist = Categorical(action_probs)
-
+        
         # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
         # Enables us to grab non-duplicate actions faster
         action_indices = torch.multinomial(action_probs,7,replacement=False)
+
+        for i in range(7):
+            memory.logprobs.append(dist.log_prob(action_indices[i]))
+            memory.states.append(state)
+            memory.actions.append(action_indices[i])
 
         return action_indices
 
@@ -124,4 +158,4 @@ class ActorCritic(nn.Module):
         # Get expected network output
         state_value = self.critic(state)
 
-        return action_logprobs
+        return action_logprobs, torch.squeeze(state_value), dist_entropy
