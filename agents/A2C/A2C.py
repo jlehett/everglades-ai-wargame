@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 # Hyperparameters
 learning_rate = 1e-2
@@ -52,19 +53,37 @@ class A2C():
         policy_loss = []
         value_loss = []
         rewards = []
-        
+        values = []
+        log_probs = []
+        entropy = 0
+
         for r in self.model.rewards[::-1]:
             R = r + gamma * R
-            rewrds.insert(0,R)
+            rewards.insert(0,R)
         
-        rewards = torch.tensor(rewards)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + epsilon)
+        #rewards = torch.tensor(rewards)
+        #rewards = (rewards - rewards.mean()) / (rewards.std() + epsilon)
 
-        for (log_prob, value), r in zip(save_actions, rewards):
+        #for (log_prob, value), r in zip(save_actions, rewards):
             
-            reward = r - value.item()
-            policy_loss.append(-log_prob * reward)
-            value_loss.append(F.smooth_l1_loss(value, torch.tensor([r])))
+        #    reward = r - value.item()
+        #    policy_loss.append(-log_prob * reward)
+        #    value_loss.append(F.smooth_l1_loss(value, torch.tensor([r])))
+
+        ######### What we should be doing, but isn't currently working #########
+        ########################################################################
+        rewards   = torch.cat(rewards).detach()
+        log_probs = torch.cat(log_probs)
+        values    = torch.cat(values)
+
+        advantage = rewards - values
+        actor_loss  = -(log_probs * advantage.detach()).mean()
+        critic_loss = advantage.pow(2).mean()
+        loss = actor_loss + 0.5 * critic_loss - 0.001 * entropy
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        ########################################################################
 
         print('policy loss', policy_loss)
         print('value loss', value_loss)
@@ -124,6 +143,7 @@ class ActorCritic(nn.Module):
         #x = F.relu(self.fc1(x))
         action_score = self.actor(x)
         state_value = self.critic(x)
+        dist  = Categorical(probs)
         return action_score, state_value
 
     def act(self, state, memory):
