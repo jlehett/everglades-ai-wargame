@@ -10,24 +10,24 @@ class ICM(nn.Module):
         # Encoder
         self.encoder = nn.Sequential(
             nn.Linear(state_dim, n_latent_var),
-            Swish(),
+            nn.Tanh(),
             nn.Linear(n_latent_var,n_latent_var),
-            Swish(),
+            nn.Tanh(),
             nn.Linear(n_latent_var, n_latent_var),
-            Swish()
+            nn.Tanh()
         )
 
         # Inverse model
         self.inverse = nn.Sequential(
             nn.Linear(n_latent_var * 2, n_latent_var),
-            Swish(),
+            nn.Tanh(),
             nn.Linear(n_latent_var,action_dim)
         )
 
         # Forward model
         self.forward_model = nn.Sequential(
             nn.Linear(n_latent_var + action_dim, n_latent_var),
-            Swish(),
+            nn.Tanh(),
             nn.Linear(n_latent_var,n_latent_var)
         )
 
@@ -41,7 +41,7 @@ class ICM(nn.Module):
         next_enc = self.encoder(next_obs)
         combined = torch.cat([curr_enc,next_enc], dim=1)
         pred_act = self.inverse(combined)#torch.transpose(self.inverse(combined), 0, 1)
-        inv_loss = (self.CrossEntropyLoss(pred_act, act) * mask).mean()
+        inv_loss = (self.CrossEntropyLoss(pred_act, act.long()) * mask).mean()
 
         # Forward model
         one_hot_act = nn.functional.one_hot(act, num_classes=self.act_dim)

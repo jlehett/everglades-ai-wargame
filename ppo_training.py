@@ -149,10 +149,14 @@ for i_episode in range(1, n_episodes+1):
 
         # Add in rewards and terminals 7 times to reflect the other memory additions
         # i.e. Actions are added one at a time (for a total of 7) into the memory
+
+        # Set inverse of done for is_terminals (prevents need to inverse later)
+        inv_done = 1 if done == 0 else 0
+
         for i in range(7):
             players[0].memory.next_states.append(torch.from_numpy(observations[0]).float())
             players[0].memory.rewards.append(reward[0])
-            players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(done)))
+            players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
 
         # Updates agent after 150 * Number of games timesteps
         if timestep % UPDATE_TIMESTEP == 0:
