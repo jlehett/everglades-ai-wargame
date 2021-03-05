@@ -1,14 +1,14 @@
 {
   "game_setup":{
-    "player[0]": "agent.py",
-    "player[1]": "./State_Machine/random_actions.py",
+    "player0": "agent.py",
+    "player1": "./State_Machine/random_actions.py",
     "n_episodes": 5000
   },
   "memory": {
     "network_save_name": "data/Rainbow",
     "network_load_name": "data/Rainbow",
     "network_save_after": 10,
-    "data_name": ""
+    "data_name": "output"
   },
   "hyperparameters": {
     "epsilon_start": 1,

@@ -1,5 +1,4 @@
-from agents.Minimized_Rainbow.QNetwork import QNetwork
-from agents.Minimized_Rainbow.Multi_Step import NStepModule
+
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -9,6 +8,10 @@ import numpy as np
 from collections import namedtuple
 import pickle
 import os
+
+from agent_attributes.PER import PrioritizedReplayBuffer
+from agent_attributes.NETWORK import Network
+
 
 TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
 EVALUATE_EPSILON = 0.00 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
@@ -32,9 +35,12 @@ BATCH_SIZE = 256 # The number of inputs to train on at one time
 TARGET_UPDATE = 100 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.99 # The amount to discount the future rewards by
+ALPHA = 0.2
 LEARNING_RATE = 1e-4 # The learning rate to be used by the optimizer
 N_STEP = 1 # The number of steps to use in multi-step learning
 EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
+V_MIN = 0.0
+V_MAX = 200.0
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -43,6 +49,7 @@ class DQNAgent():
         self,
         player_num,
         map_name,
+        observation_space
     ):
         """
         Initialize a DQNAgent that will be used to play the Everglades game.
@@ -61,11 +68,15 @@ class DQNAgent():
         self.training = TRAIN
 
         # Create the NStepModule
-        self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
+        #self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
+        self.NstepModule = PrioritizedReplayBuffer(observation_space, MEMORY_SIZE, BATCH_SIZE, ALPHA)
 
         # Set up the network
-        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
-        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
+        #self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
+        #self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
+        self.support = torch.linspace(V_MIN, V_MAX, FC1_SIZE).to(self.device)
+        self.policy_net = Network(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
+        self.target_net = Network(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
 
         # If a save file is specified and the file exists, load the save file
         if NETWORK_LOAD_NAME and os.path.exists(NETWORK_LOAD_NAME + '.pickle'):
@@ -364,3 +375,6 @@ class DQNAgent():
             print('Saved Network')
         else:
             print('Save Failed - Save File Not Specified')
+
+Transition = namedtuple('Transition',
+                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone'))

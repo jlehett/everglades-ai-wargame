@@ -78,8 +78,6 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
-    players[1].reset()
-
     while not done:
         if i_episode % 25 == 0:
             env.render()
