@@ -10,8 +10,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
-#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = 'cpu'
 
 # Hyperparameters
 learning_rate = 1e-2
@@ -21,7 +21,7 @@ epsilon = 0.99
 SavedAction = namedtuple('SavedAction', ['log_prob','value'])
 
 class A2C():
-    def __init__(self,action_space,observation_space, player_num, K_epochs):
+    def __init__(self,action_space,observation_space, K_epochs):
         self.state_space = observation_space.shape[0]
         self.action_space = action_space
         self.K_epochs = K_epochs
@@ -48,52 +48,54 @@ class A2C():
         return action
 
     def optimize_model(self):
-        R = 0
-        save_actions = self.model.save_actions
-        policy_loss = []
-        value_loss = []
+        # Monte Carlo estimate of state rewards:
         rewards = []
-        values = []
-        log_probs = []
-        entropy = 0
+        discounted_reward = 0
+      
+        # Calculate reward discounts 
+        for reward in reversed(self.memory.rewards):
+            discounted_reward = reward + (gamma * discounted_reward)
+            rewards.insert(0, discounted_reward)
+       
 
-        for r in self.model.rewards[::-1]:
-            R = r + gamma * R
-            rewards.insert(0,R)
+        # Normalizing the rewards:
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+
+        #print(rewards.size())
+
+        # convert list to tensor
+        states = torch.stack(self.memory.states).to(device).detach()
+        actions = torch.stack(self.memory.actions).to(device).detach()
+        logprobs = torch.stack(self.memory.logprobs).to(device).detach()
+        
+        for _ in range(self.K_epochs):
+            logprobs, state_values, dist_entropy = self.model.evaluate(states, actions)
+
+        advantage = rewards - state_values.detach()
+
+        actor_loss = -(logprobs * advantage.detach()).mean()
+        critic_loss = advantage.pow(2).mean()
+
+        loss = actor_loss + 0.5 * critic_loss - 0.001 * dist_entropy.mean()
+        #for r in self.model.rewards[::-1]:
+            #R = r + gamma * R
+            #rewards.insert(0,R)
         
         #rewards = torch.tensor(rewards)
         #rewards = (rewards - rewards.mean()) / (rewards.std() + epsilon)
 
         #for (log_prob, value), r in zip(save_actions, rewards):
             
-        #    reward = r - value.item()
-        #    policy_loss.append(-log_prob * reward)
-        #    value_loss.append(F.smooth_l1_loss(value, torch.tensor([r])))
+            #reward = r - value.item()
+            #policy_loss.append(-log_prob * reward)
+            #value_loss.append(F.smooth_l1_loss(value, torch.tensor([r])))
 
-        ######### What we should be doing, but isn't currently working #########
-        ########################################################################
-        rewards   = torch.cat(rewards).detach()
-        log_probs = torch.cat(log_probs)
-        values    = torch.cat(values)
-
-        advantage = rewards - values
-        actor_loss  = -(log_probs * advantage.detach()).mean()
-        critic_loss = advantage.pow(2).mean()
-        loss = actor_loss + 0.5 * critic_loss - 0.001 * entropy
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        ########################################################################
 
-        print('policy loss', policy_loss)
-        print('value loss', value_loss)
-        self.optimizer.zero_grad()
-        loss = torch.stack(policy_loss).sum() + torch.stack(value_loss).sum()
-        loss.backward()
-        self.optimizer.step()
-
-        del self.model.rewards[:]
-        del self.model.save_actions[:]
+        self.memory.clear_memory()
 
 ####################
 #   Memory Class   #
@@ -125,7 +127,7 @@ class ActorCritic(nn.Module):
 
         # actor
         self.actor = nn.Sequential(
-            nn.Linear(state_dim, 528),
+            nn.Linear(state_dim, 528),  
             nn.Linear(528, action_dim),
             nn.Softmax(dim=-1)
         )
@@ -143,7 +145,6 @@ class ActorCritic(nn.Module):
         #x = F.relu(self.fc1(x))
         action_score = self.actor(x)
         state_value = self.critic(x)
-        dist  = Categorical(probs)
         return action_score, state_value
 
     def act(self, state, memory):
@@ -165,6 +166,7 @@ class ActorCritic(nn.Module):
 
     def evaluate(self, state, action):
         action_probs = self.actor(state)
+        
 
         # Use same distribution as act
         dist = Categorical(action_probs)

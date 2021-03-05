@@ -47,6 +47,21 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
+#################
+# Setup agents  #
+#################
+players[0] = A2C(env.num_actions_per_turn, env.observation_space,8)
+names[0] = "DQN Agent"
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+names[1] = 'Random Agent'
+#################
+
+actions = {}
+
+## Set high episode to test convergence
+# Change back to resonable setting for other testing
+n_episodes = 1000
+
 #########################
 # Statistic variables   #
 #########################
@@ -63,23 +78,7 @@ current_loss = 0
 lossVals = []
 average_reward = 0
 avgRewardVals = []
-K_epochs = 10
 #########################
-
-#################
-# Setup agents  #
-#################
-players[0] = A2C(env.num_actions_per_turn, env.observation_space,8, K_epochs)
-names[0] = "DQN Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent'
-#################
-
-actions = {}
-
-## Set high episode to test convergence
-# Change back to resonable setting for other testing
-n_episodes = 1000
 
 #####################
 #   Training Loop   #
@@ -113,7 +112,6 @@ for i_episode in range(1, n_episodes+1):
 
         # Get actions for each player
         for pid in players:
-            print(observations[pid])
             actions[pid] = players[pid].get_action( observations[pid] )
 
         # Grab previos observation for agent
@@ -133,16 +131,17 @@ for i_episode in range(1, n_episodes+1):
         # Unwravel action to add into memory seperately
         action_0 = 0
         for i in range(7):
+            players[0].memory.rewards.append(reward[0])
             action_0 = (actions[0][i][0] * 11 + actions[0][i][1]) 
         
         players[0].optimize_model()
 
         #########################
 
-        current_eps = players[0].eps_threshold
-        if players[0].Temp != 0:
-            current_eps = players[0].Temp
-        current_loss = players[0].loss
+        #current_eps = players[0].eps_threshold
+        #if players[0].Temp != 0:
+            #current_eps = players[0].Temp
+        #current_loss = players[0].loss
 
         #pdb.set_trace()
     #####################
