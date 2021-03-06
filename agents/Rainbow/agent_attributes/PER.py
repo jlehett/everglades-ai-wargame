@@ -12,7 +12,7 @@ import torch.optim as optim
 from IPython.display import clear_output
        
 from segment_tree import MinSegmentTree, SumSegmentTree
-from ReplayMemory import ReplayMemory
+from ReplayMemory import ReplayBuffer
 
 class PrioritizedReplayBuffer(ReplayBuffer):
     """Prioritized Replay buffer.

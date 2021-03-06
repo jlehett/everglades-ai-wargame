@@ -13,7 +13,7 @@ import torch.optim as optim
 from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
 
-class ReplayBuffer():
+class ReplayBuffer:
     """A simple numpy replay buffer."""
 
     def __init__(

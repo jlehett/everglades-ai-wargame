@@ -10,8 +10,8 @@ import pickle
 import os
 
 from agent_attributes.PER import PrioritizedReplayBuffer
-from agent_attributes.NETWORK import Network
-
+from agent_attributes.Network import Network
+from ReplayMemory import ReplayBuffer
 
 TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
 EVALUATE_EPSILON = 0.00 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
@@ -39,6 +39,8 @@ ALPHA = 0.2
 LEARNING_RATE = 1e-4 # The learning rate to be used by the optimizer
 N_STEP = 1 # The number of steps to use in multi-step learning
 EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
+
+# distributional
 V_MIN = 0.0
 V_MAX = 200.0
 
@@ -69,12 +71,16 @@ class DQNAgent():
 
         # Create the NStepModule
         #self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
-        self.NstepModule = PrioritizedReplayBuffer(observation_space, MEMORY_SIZE, BATCH_SIZE, ALPHA)
+        if N_STEP > 1:
+            self.NStepMemory = ReplayBuffer(observation_space, MEMORY_SIZE, BATCH_SIZE, N_STEP, GAMMA)
+
+        # PER memory
+        self.ReplayMemory = PrioritizedReplayBuffer(observation_space, MEMORY_SIZE, BATCH_SIZE, ALPHA)
 
         # Set up the network
         #self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
         #self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
-        self.support = torch.linspace(V_MIN, V_MAX, FC1_SIZE).to(self.device)
+        self.support = torch.linspace(V_MIN, V_MAX, FC1_SIZE).to(device)
         self.policy_net = Network(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
         self.target_net = Network(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
 
@@ -285,7 +291,7 @@ class DQNAgent():
         for swarm_num in range(NUM_GROUPS):
             per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
-        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
+        self.ReplayMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
 
     def optimize_model(self):
         """
@@ -297,9 +303,9 @@ class DQNAgent():
             return
         # If the NStepModule's experience replay isn't large enough, we should bail out.
         # Otherwise, we can grab sample data from the replay memory.
-        if not self.NStepModule.isMemoryLargeEnoughToTrain(BATCH_SIZE):
+        if not self.ReplayMemory.isMemoryLargeEnoughToTrain(BATCH_SIZE):
             return
-        transitions = self.NStepModule.sampleReplayMemory(BATCH_SIZE)
+        transitions = self.ReplayMemory.sampleReplayMemory(BATCH_SIZE)
 
         # Create the batch of data to use
         batch = Transition(*zip(*transitions))
@@ -345,7 +351,7 @@ class DQNAgent():
         @param episodes The number of episodes that have elapsed since the current training session began
         """
         # Add the played game to memory
-        self.NStepModule.addGameToReplayMemory()
+        self.ReplayMemory.addGameToReplayMemory()
         # Update target network every UPDATE_TARGET_AFTER episodes
         if episodes % TARGET_UPDATE == 0 and TRAIN:
             self.target_net.load_state_dict(self.policy_net.state_dict())

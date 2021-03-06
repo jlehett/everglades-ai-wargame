@@ -4,6 +4,7 @@ from torch import nn
 from torch.nn import init, Parameter
 from torch.nn import functional as F
 from torch.autograd import Variable
+import numpy as np
 
 class NoisyLinear(nn.Module):
     """Noisy linear module for NoisyNet.
