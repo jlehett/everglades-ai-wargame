@@ -47,24 +47,11 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
-#################
-# Setup agents  #
-#################
-players[0] = A2C(env.num_actions_per_turn, env.observation_space,8)
-names[0] = "DQN Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent'
-#################
-
-actions = {}
-
-## Set high episode to test convergence
-# Change back to resonable setting for other testing
-n_episodes = 1000
-
 #########################
 # Statistic variables   #
 #########################
+ACTION_DIM = 132
+k_epochs = 8
 scores = []
 k = 100
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
@@ -79,6 +66,22 @@ lossVals = []
 average_reward = 0
 avgRewardVals = []
 #########################
+
+#################
+# Setup agents  #
+#################
+players[0] = A2C(ACTION_DIM, env.observation_space,k_epochs)
+names[0] = "DQN Agent"
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+names[1] = 'Random Agent'
+#################
+
+actions = {}
+
+## Set high episode to test convergence
+# Change back to resonable setting for other testing
+n_episodes = 1000
+
 
 #####################
 #   Training Loop   #

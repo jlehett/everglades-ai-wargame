@@ -10,8 +10,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-#device = 'cpu'
+#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 # Hyperparameters
 learning_rate = 1e-2
@@ -34,15 +34,18 @@ class A2C():
         self.optimizer = optim.Adam(self.model.parameters())
 
     def get_action(self, obs):
-        action = np.zeros(self.shape)
+        action = np.zeros((7, 2))
+
         chosen_indices = self.model.act(obs, self.memory)
 
-        # Unwravel action indices to output to the env
+        # Unravel action indices to output to the env
         chosen_units = chosen_indices // 12
         chosen_nodes = chosen_indices % 11
 
         action[:,0] = chosen_units
         action[:,1] = chosen_nodes
+
+        #print(action)
 
         #log_prob = self.model.evaluate(obs, action)
         return action
@@ -62,6 +65,8 @@ class A2C():
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
+        #print(rewards)
+
         #print(rewards.size())
 
         # convert list to tensor
@@ -72,12 +77,28 @@ class A2C():
         for _ in range(self.K_epochs):
             logprobs, state_values, dist_entropy = self.model.evaluate(states, actions)
 
+        #print(logprobs.size())
+        #print(state_values)
+        #print(dist_entropy.size())
+
         advantage = rewards - state_values.detach()
+
+        print("Advantage:")
+        print(advantage)
+        print(advantage.size())
+        #print(-(logprobs * advantage.detach()).mean())
 
         actor_loss = -(logprobs * advantage.detach()).mean()
         critic_loss = advantage.pow(2).mean()
 
+        print("Actor loss:")
+        print(actor_loss)
+        print("Critic loss:")
+        print(critic_loss)
+        print("")
+
         loss = actor_loss + 0.5 * critic_loss - 0.001 * dist_entropy.mean()
+        #print(loss.size())
         #for r in self.model.rewards[::-1]:
             #R = r + gamma * R
             #rewards.insert(0,R)
@@ -124,7 +145,7 @@ class ActorCritic(nn.Module):
         super(ActorCritic, self).__init__()
         # First layer
         self.fc1 = nn.Linear(state_dim, 528)
-
+        
         # actor
         self.actor = nn.Sequential(
             nn.Linear(state_dim, 528),  
@@ -135,7 +156,7 @@ class ActorCritic(nn.Module):
         # critic, return a scalar value
         self.critic = nn.Sequential(
             nn.Linear(state_dim, 528),
-            nn.Linear(528, action_dim)
+            nn.Linear(528, 1)
         )
 
         self.save_actions = []
@@ -179,5 +200,6 @@ class ActorCritic(nn.Module):
 
         # Get expected network output
         state_value = self.critic(state)
+        #print(state_value.size())
 
         return action_logprobs, torch.squeeze(state_value), dist_entropy
