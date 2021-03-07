@@ -83,21 +83,21 @@ class A2C():
 
         advantage = rewards - state_values.detach()
 
-        print("Advantage:")
-        print(advantage)
-        print(advantage.size())
+        #print("Advantage:")
+        #print(advantage)
+        #print(advantage.size())
         #print(-(logprobs * advantage.detach()).mean())
 
         actor_loss = -(logprobs * advantage.detach()).mean()
         critic_loss = advantage.pow(2).mean()
 
-        print("Actor loss:")
-        print(actor_loss)
-        print("Critic loss:")
-        print(critic_loss)
-        print("")
+        #print("Actor loss:")
+        #print(actor_loss)
+        #print("Critic loss:")
+        #print(critic_loss)
+        #print("")
 
-        loss = actor_loss + 0.5 * critic_loss - 0.001 * dist_entropy.mean()
+        self.loss = actor_loss + 0.5 * critic_loss - 0.001 * dist_entropy.mean()
         #print(loss.size())
         #for r in self.model.rewards[::-1]:
             #R = r + gamma * R
@@ -113,7 +113,7 @@ class A2C():
             #value_loss.append(F.smooth_l1_loss(value, torch.tensor([r])))
 
         self.optimizer.zero_grad()
-        loss.backward()
+        self.loss.backward()
         self.optimizer.step()
 
         self.memory.clear_memory()
@@ -148,7 +148,10 @@ class ActorCritic(nn.Module):
         
         # actor
         self.actor = nn.Sequential(
-            nn.Linear(state_dim, 528),  
+            nn.Linear(state_dim, 528),
+            nn.Tanh(),
+            nn.Linear(528, 528),
+            nn.Tanh(),
             nn.Linear(528, action_dim),
             nn.Softmax(dim=-1)
         )
@@ -156,6 +159,9 @@ class ActorCritic(nn.Module):
         # critic, return a scalar value
         self.critic = nn.Sequential(
             nn.Linear(state_dim, 528),
+            nn.Tanh(),
+            nn.Linear(528, 528),
+            nn.Tanh(),
             nn.Linear(528, 1)
         )
 

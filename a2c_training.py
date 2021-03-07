@@ -51,7 +51,7 @@ names = {}
 # Statistic variables   #
 #########################
 ACTION_DIM = 132
-k_epochs = 8
+k_epochs = 30
 scores = []
 k = 100
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
@@ -80,7 +80,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 1000
+n_episodes = 1500
 
 
 #####################
@@ -104,8 +104,8 @@ for i_episode in range(1, n_episodes+1):
     # Reset the reward average
     average_reward = 0
     while not done:
-        if i_episode % 5 == 0:
-            env.render()
+        #if i_episode % 5 == 0:
+        #    env.render()
 
         ### Removed to save processing power
         # Print statements were taking forever
@@ -143,8 +143,8 @@ for i_episode in range(1, n_episodes+1):
 
         #current_eps = players[0].eps_threshold
         #if players[0].Temp != 0:
-            #current_eps = players[0].Temp
-        #current_loss = players[0].loss
+        #    current_eps = players[0].Temp
+        current_loss = players[0].loss
 
         #pdb.set_trace()
     #####################
