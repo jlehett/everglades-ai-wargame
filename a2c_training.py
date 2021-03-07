@@ -50,7 +50,7 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = A2C(132, env.observation_space,8)
+players[0] = A2C(132, env.observation_space, 528, 8)
 names[0] = "DQN Agent"
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
@@ -137,7 +137,7 @@ for i_episode in range(1, n_episodes+1):
         #current_eps = players[0].eps_threshold
         #if players[0].Temp != 0:
             #current_eps = players[0].Temp
-        #current_loss = players[0].loss
+        current_loss = players[0].loss
 
         #pdb.set_trace()
     #####################

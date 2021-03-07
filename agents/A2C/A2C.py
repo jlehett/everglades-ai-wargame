@@ -20,16 +20,17 @@ epsilon = 0.99
 SavedAction = namedtuple('SavedAction', ['log_prob','value'])
 
 class A2C():
-    def __init__(self,action_space,observation_space, K_epochs):
+    def __init__(self,action_space,observation_space, n_latent_var, K_epochs):
         self.state_space = observation_space.shape[0]
         self.action_space = action_space
+        self.n_latent_var = n_latent_var
         self.K_epochs = 8
-
+        print(action_space)
         self.memory = Memory()
-        
+        self.loss = 0
         self.shape = (7, 2)
 
-        self.model = ActorCritic(self.state_space, self.action_space)
+        self.model = ActorCritic(self.state_space, self.action_space, self.n_latent_var)
         self.optimizer = optim.Adam(self.model.parameters())
 
     def get_action(self, obs):
@@ -44,7 +45,7 @@ class A2C():
         action[:,1] = chosen_nodes
 
         #log_prob = self.model.evaluate(obs, action)
-        print(action)
+        #print(action)
         return action
 
     #def calc_return()
@@ -77,10 +78,10 @@ class A2C():
 
         actor_loss = -(logprobs * advantage.detach()).mean()
         critic_loss = advantage.pow(2).mean()
-        loss = actor_loss + 0.5 * critic_loss - 0.001 * entropy
+        self.loss = actor_loss + 0.5 * critic_loss - 0.001 * entropy
 
         self.optimizer.zero_grad()
-        loss.backward()
+        self.loss.backward()
         self.optimizer.step()
 
         self.memory.clear_memory()
@@ -108,20 +109,31 @@ class Memory:
 #   Actor Critic Class   #
 ##########################
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, n_latent_var):
         super(ActorCritic, self).__init__()
 
         # actor
         self.actor = nn.Sequential(
-            nn.Linear(state_dim, 528),
-            nn.Linear(528, action_dim),
+            nn.Linear(state_dim, n_latent_var),
+            nn.Tanh(),
+            nn.Linear(n_latent_var,n_latent_var),
+            nn.Tanh(),
+            nn.Linear(n_latent_var, action_dim),
             nn.Softmax(dim=-1)
+            #nn.Linear(state_dim, 528),
+            #nn.Linear(528, action_dim),
+            #nn.Softmax(dim=-1)
         )
 
         # critic, return a scalar value
         self.critic = nn.Sequential(
-            nn.Linear(state_dim, 528),
-            nn.Linear(528, 1)
+            nn.Linear(state_dim, n_latent_var),
+            nn.Tanh(),
+            nn.Linear(n_latent_var,n_latent_var),
+            nn.Tanh(),
+            nn.Linear(n_latent_var, 1)
+            #nn.Linear(state_dim, 528),
+            #nn.Linear(528, 1)
         )
 
 
