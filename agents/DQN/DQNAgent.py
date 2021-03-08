@@ -18,10 +18,9 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 
-# Temperature settings for Boltzmann exploration
-TEMP_START = 1e+2
-TEMP_END = 1.0
-TEMP_DECAY = 0.00005
+# Import Rainbow Modules
+from agents.DQN.NoisyLinear import NoisyLinear
+from agents.DQN.PrioritizedMemory import PrioritizedMemory
 
 steps_done = 0
 
@@ -36,12 +35,13 @@ device = torch.device("cpu")
 
 class DQNAgent():
     def __init__(self,action_space,observation_space, player_num, lr, replay_size, batch_size, 
-                gamma, weight_decay, exploration, eps_start, eps_end,eps_decay,target_update):
+                gamma, weight_decay, exploration, eps_start, eps_end,eps_decay,target_update, batch_update):
 
         # Setup constants
         self.lr = lr
         self.replay_size = replay_size
         self.batch_size = batch_size
+        self.batch_update = batch_update
         self.gamma = gamma
         self.weight_decay = weight_decay
         self.exploration = exploration
@@ -67,8 +67,9 @@ class DQNAgent():
         self.target_net.eval()
 
         # Added weight decay and LR for testing
-        self.optimizer = optim.RMSprop(self.policy_net.parameters(),lr = self.lr, weight_decay=self.weight_decay)
+        self.optimizer = optim.Adam(self.policy_net.parameters(),lr = self.lr, weight_decay=self.weight_decay)
         self.memory = ReplayMemory(self.replay_size)
+        self.prioritized_memory = PrioritizedMemory(self.replay_size)
 
         self.steps_done = 0
 
@@ -78,6 +79,11 @@ class DQNAgent():
         self.shape = (self.num_actions, 2)
         self.loss = 0
         self.q_values = np.zeros((132))
+
+        # Prioritized experience beta values
+        self.beta_start = 0.4
+        self.beta_frames = 1000 
+        self.beta_by_frame = lambda frame_idx: min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
     
     def get_action(self, obs):
         action = np.zeros(self.shape)
@@ -85,35 +91,32 @@ class DQNAgent():
         # Added new style of exploration for testing
         # Do not use
         if self.exploration == "Boltzmann":
-            action = self.boltzmann(action, obs)
+            pass
         elif self.exploration == "EPS":
             action = self.epsilon_greedy(action, obs)
         
         return action
-
-
-    def boltzmann(self, action, obs):
+    
+    def single_action(self, action, obs):
         global steps_done
         sample = random.random()
-
-        ### Borrowed EPS decay for Boltzmann temperature decay
+        ### Updated the eps equation to be more readable (based on the pytorch implementation on 
         # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
-        self.Temp = TEMP_END + (TEMP_START - TEMP_END) * np.exp(steps_done * -TEMP_DECAY)
+        self.eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * np.exp(steps_done * -self.eps_decay)
         ###
-
         steps_done += 1
-        action_qs = self.policy_net(obs)
-        action_qs = F.softmax(action_qs/self.Temp, dim=-1)
 
-        # Sample actions using Boltzmann distribution without replacement
-        action_indices = torch.multinomial(action_qs,7,replacement=False)
+        if sample > self.eps_threshold:
+            action_q = self.policy_net(obs).max(0)[1]
+            self.q_values = self.policy_net(obs)
+            chosen_unit = action_q // 12
+            chosen_node = action_q % 11
+            action[0,0] = chosen_unit
+            action[0,1] = chosen_node
+        else:
+            action[0, 0] = np.random.choice(self.num_groups, replace=False)
+            action[0, 1] = np.random.choice(self.num_nodes, replace=False)
 
-        # Unwravel chosen indices for action
-        chosen_units = action_indices // 12
-        chosen_nodes = action_indices % 11
-
-        action[:,0] = chosen_units
-        action[:,1] = chosen_nodes
         return action
 
     def epsilon_greedy(self, action, obs):
@@ -166,6 +169,9 @@ class DQNAgent():
             action[:, 0] = best_action_units
             action[:, 1] = best_action_nodes
         return action
+
+    def update_batch(self):
+        self.batch_size += self.batch_update
 
     def optimize_model(self):
         if len(self.memory) < self.batch_size:
@@ -227,6 +233,48 @@ class DQNAgent():
         loss.backward()
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
+
+        #Noisy net reset params
+        #self.policy_net.reset_noise()
+        #self.target_net.reset_noise()
+
+        # Sets the loss to be grabbed by training file
+        self.loss = loss
+
+
+    
+    def prioritized_optimize_model(self, i_episode):
+        # Calculate the beta
+        beta = self.beta_by_frame(i_episode)
+        # Sample from the memory
+        state, action, reward, next_state, done, indices, weights = self.prioritized_memory.sample(self.batch_size, beta)
+
+        # Setup data for calculations
+        state      = torch.FloatTensor(np.float32(state))
+        next_state = torch.FloatTensor(np.float32(next_state))
+        action     = torch.cat([s.unsqueeze(0) for s in action]).long()
+        reward     = torch.FloatTensor(reward).unsqueeze(1).detach().repeat(1,7)
+        done       = torch.FloatTensor(done).unsqueeze(1).detach().repeat(1,7)
+        weights    = torch.FloatTensor(weights).unsqueeze(1).detach().repeat(1,7)
+
+        # Get action q_vals
+        q_values      = self.policy_net(state)
+        # Get targeted vals
+        next_q_values = self.target_net(next_state)
+
+        # Correct remaining parts of loss function
+        q_value          = torch.gather(q_values,1,action)
+        next_q_value     = next_q_values.topk(7,1)[0]#.max(1)[0].detach()
+        expected_q_value = reward + (self.gamma * next_q_value * (1 - done))
+        
+        loss  = (q_value - expected_q_value).pow(2) * weights
+        prios = loss.mean(1) + 1e-5
+        loss  = loss.mean()
+            
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.prioritized_memory.update_priorities(indices, prios.data.cpu().numpy())
         self.optimizer.step()
 
         #Noisy net reset params
@@ -297,8 +345,8 @@ import torchvision.transforms as T
 
 class QNetwork(nn.Module):
     """ Actor (Policy) Model."""
-    def __init__(self,observation_size,action_size, seed, fc1_unit = 128,
-                 fc2_unit = 128):
+    def __init__(self,observation_size,action_size, seed, fc1_unit = 528,
+                 fc2_unit = 528):
         """
         Initialize parameters and build model.
         Params
@@ -317,7 +365,6 @@ class QNetwork(nn.Module):
         #############################################################################################
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
-
         self.fc2 = nn.Linear(fc1_unit,self.action_size)
 
         #############################################################################################
@@ -327,11 +374,11 @@ class QNetwork(nn.Module):
         # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
         #############################################################################################
 
-        #self.fc2_adv = NoisyLinear(fc1_unit,fc2_unit)
-        #self.fc2_val = NoisyLinear(fc1_unit,fc2_unit)
+        #self.fc2_adv = nn.Linear(fc1_unit,fc2_unit)
+        #self.fc2_val = nn.Linear(fc1_unit,fc2_unit)
 
-        #self.fc3_adv = NoisyLinear(fc2_unit,self.action_size)
-        #self.fc3_val = NoisyLinear(fc2_unit,1)
+        #self.fc3_adv = nn.Linear(fc2_unit,self.action_size)
+        #self.fc3_val = nn.Linear(fc2_unit,1)
 
         ##############################################################################################
         
@@ -353,7 +400,7 @@ class QNetwork(nn.Module):
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
 
-        x = self.fc2(x)
+        x = F.relu(self.fc2(x))
 
         #############################################################################################
 
@@ -371,10 +418,10 @@ class QNetwork(nn.Module):
         #advAverage = adv.mean()
         #x = val + adv - advAverage
 
-        ##############################################################################################
+       ##############################################################################################
 
         return x
-    
+   
     def reset_noise(self):
         self.fc1.reset_noise()
         #self.fc2.reset_noise() # Non-dueling
@@ -383,60 +430,3 @@ class QNetwork(nn.Module):
         self.fc2_val.reset_noise()
         self.fc3_adv.reset_noise()
         self.fc3_val.reset_noise()
-
-import math
-import torch
-from torch import nn
-from torch.nn import init, Parameter
-from torch.nn import functional as F
-from torch.autograd import Variable
-
-class NoisyLinear(nn.Module):
-    def __init__(self, in_features, out_features, std_init=0.4):
-        super(NoisyLinear, self).__init__()
-        
-        self.in_features  = in_features
-        self.out_features = out_features
-        self.std_init     = std_init
-        
-        self.weight_mu    = nn.Parameter(torch.FloatTensor(out_features, in_features))
-        self.weight_sigma = nn.Parameter(torch.FloatTensor(out_features, in_features))
-        self.register_buffer('weight_epsilon', torch.FloatTensor(out_features, in_features))
-        
-        self.bias_mu    = nn.Parameter(torch.FloatTensor(out_features))
-        self.bias_sigma = nn.Parameter(torch.FloatTensor(out_features))
-        self.register_buffer('bias_epsilon', torch.FloatTensor(out_features))
-        
-        self.reset_parameters()
-        self.reset_noise()
-    
-    def forward(self, x):
-        if self.training: 
-            weight = self.weight_mu + self.weight_sigma.mul(Variable(self.weight_epsilon))
-            bias   = self.bias_mu   + self.bias_sigma.mul(Variable(self.bias_epsilon))
-        else:
-            weight = self.weight_mu
-            bias   = self.bias_mu
-        
-        return F.linear(x, weight, bias)
-    
-    def reset_parameters(self):
-        mu_range = 1 / math.sqrt(self.weight_mu.size(1))
-        
-        self.weight_mu.data.uniform_(-mu_range, mu_range)
-        self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.weight_sigma.size(1)))
-        
-        self.bias_mu.data.uniform_(-mu_range, mu_range)
-        self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.bias_sigma.size(0)))
-    
-    def reset_noise(self):
-        epsilon_in  = self._scale_noise(self.in_features)
-        epsilon_out = self._scale_noise(self.out_features)
-        
-        self.weight_epsilon.copy_(epsilon_out.ger(epsilon_in))
-        self.bias_epsilon.copy_(self._scale_noise(self.out_features))
-    
-    def _scale_noise(self, size):
-        x = torch.randn(size)
-        x = x.sign().mul(x.abs().sqrt())
-        return x

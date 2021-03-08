@@ -12,7 +12,7 @@ import torch
 import numpy as np
 
 from everglades_server import server
-from agents.PPO1.PPOAgent import PPOAgent
+from agents.RPPO.RPPOAgent import RPPOAgent
 
 # Import agent to train against
 sys.path.append(os.path.abspath('../'))
@@ -47,7 +47,7 @@ names = {}
 #####################
 #   PPO Constants   #
 #####################
-N_LATENT_VAR = 128
+N_LATENT_VAR = 256
 LR = 0.0001
 K_EPOCHS = 10
 GAMMA = 0.99
@@ -55,10 +55,10 @@ BETAS = (0.9,0.999)
 EPS_CLIP = 0.2
 ACTION_DIM = 132
 OBSERVATION_DIM = 105
-NUM_GAMES_TILL_UPDATE = 10
+NUM_GAMES_TILL_UPDATE = 1
 UPDATE_TIMESTEP = 150 * NUM_GAMES_TILL_UPDATE
-INTR_REWARD_STRENGTH = 0.8
-ICM_BATCH_SIZE = 500
+INTR_REWARD_STRENGTH = 0.9
+ICM_BATCH_SIZE = 150
 TARGET_KL = 0.01
 LAMBD = 0.95
 USE_ICM = True
@@ -67,9 +67,12 @@ USE_ICM = True
 #################
 # Setup agents  #
 #################
-players[0] = PPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP, 
+players[0] = RPPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP, 
                         INTR_REWARD_STRENGTH, ICM_BATCH_SIZE, TARGET_KL, LAMBD, USE_ICM)
-names[0] = 'PPO Agent'
+names[0] = 'RPPO Agent'
+hidden = torch.zeros(N_LATENT_VAR).unsqueeze(0).unsqueeze(0)
+
+
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
@@ -127,7 +130,7 @@ for i_episode in range(1, n_episodes+1):
     players[1].reset()
 
     while not done:
-        if i_episode % 25 == 0:
+        if i_episode % 5 == 0:
             env.render()
 
         ### Removed to save processing power
@@ -137,8 +140,10 @@ for i_episode in range(1, n_episodes+1):
         ###
 
         # Get actions for each player
-        for pid in players:
-            actions[pid] = players[pid].get_action( observations[pid] )
+        #for pid in players:
+        #    actions[pid] = players[pid].get_action( observations[pid] )
+        actions[1] = players[1].get_action( observations[1] )
+        actions[0], hidden = players[0].get_action( observations[0], hidden )
 
         # Update env
         observations, reward, done, info = env.step(actions)
@@ -167,6 +172,9 @@ for i_episode in range(1, n_episodes+1):
             players[0].optimize_model()
             players[0].memory.clear_memory()
             timestep = 0
+
+            # Reset the hidden states
+            hidden = torch.zeros(N_LATENT_VAR).unsqueeze(0).unsqueeze(0)
         #########################
 
         current_eps = timestep

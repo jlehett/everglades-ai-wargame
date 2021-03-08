@@ -14,6 +14,7 @@ import numpy as np
 from everglades_server import server
 from agents.DQN.DQNAgent import DQNAgent
 from agents.State_Machine.random_actions import random_actions
+from RewardShaping import RewardShaping
 
 #from everglades-server import generate_map
 
@@ -51,9 +52,10 @@ names = {}
 #########################
 #   Setup DQN Constants #
 #########################
-LR = 1e-6
-REPLAY_SIZE = 100000
-BATCH_SIZE = 256 # Updated
+LR = 0.0001
+REPLAY_SIZE = 10000
+BATCH_SIZE = 128
+BATCH_UPDATE = 32 # Increases batch size at each episode mod k (Allegedly comparable to decaying learning rate)
 GAMMA = 0.99
 LEAKY_SLOPE = 0.01 # Updated
 WEIGHT_DECAY = 0 # Leave at zero. Weight decay has so far caused massive collapse in network output
@@ -62,9 +64,9 @@ EXPLORATION = "EPS" # Defines the exploration type. EPS is Epsilon Greedy, Boltz
 # Increase by one order of magnitude to finish around episode 200-250
 EPS_START = 0.9
 EPS_END = 0.01
-EPS_DECAY = 0.00005
+EPS_DECAY = 0.00001
 ###
-TARGET_UPDATE = 100 # Updated
+TARGET_UPDATE = 100 # 60 games approximately equal to ~10,000 time steps (what was used by Deepmind)
 #########################
 
 #####################
@@ -79,11 +81,17 @@ device = torch.device("cpu")
 # Setup agents  #
 #################
 players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space,0,LR,REPLAY_SIZE,BATCH_SIZE,
-                        GAMMA,WEIGHT_DECAY,EXPLORATION,EPS_START,EPS_END,EPS_DECAY,TARGET_UPDATE)
+                        GAMMA,WEIGHT_DECAY,EXPLORATION,EPS_START,EPS_END,EPS_DECAY,TARGET_UPDATE,BATCH_UPDATE)
 names[0] = "DQN Agent"
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
+
+#############################
+#   Setup Reward Shaping    #
+#############################
+reward_shaper = RewardShaping()
+#############################
 
 
 actions = {}
@@ -107,13 +115,14 @@ epsilonVals = []
 current_loss = 0
 lossVals = []
 final_score = 0
+final_score_random = 0
 short_term_final_score = np.zeros((k,)) # Used to average win rates
 short_term_final_scores = [0.5] # Average win rates per k episodes
+short_term_final_score_random = np.zeros((k,)) # Used to average win rates
+short_term_final_scores_random = [0.5] # Average win rates per k episodes
 q_values = 0
 qVals = []
 reward = {0: 0, 1: 0}
-reward_decay = 0
-reward_divider = 1000
 #########################
 
 #####################
@@ -137,7 +146,7 @@ for i_episode in range(1, n_episodes+1):
     players[1].reset()
 
     while not done:
-        if i_episode % 25 == 0:
+        if i_episode % 5 == 0:
             env.render()
 
         ### Removed to save processing power
@@ -160,24 +169,18 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
 
-        #### REWARD DECAY ####
-        # Setup reward decay
-        if not done:
-            final_score = reward[0] # gets the final score before end of game turn
-            reward[0] = 0.01 # default reward for non end of game turns
-        elif reward[0] < reward[1]: # if agent loses
-            reward[0] = reward[0] - reward_decay # negative reward that decays over time for losing
-        else:
-            reward[0] = final_score / reward_divider # positive reward for winning (scores will generally be between 300 and 3500)
-        #### REWARD DECAY ####
+        #### REWARD SHAPING ####
+        # Get shaped rewards and win condition
+        won,reward,final_score,final_score_random = reward_shaper.get_reward(done, reward)
+        #### REWARD SHAPING ####
 
-        reward_0 = torch.Tensor(np.asarray(reward[0]))
+        reward_0 = torch.from_numpy(np.asarray(reward[0]))
 
         if not reward_0.dim() > 0: # Puts reward as 1 dim tensor
             reward_0 = reward_0.unsqueeze(0)
         else: # Fixes error where empty tensor is passed to memory
             reward_0 = torch.ones(1) * 0
-        reward_0 = reward_0.to(device) # Send to device
+        reward_0 = reward_0 # Send to device
 
         batch_actions = np.zeros(7)
 
@@ -186,9 +189,11 @@ for i_episode in range(1, n_episodes+1):
         for i in range(7):
             batch_actions[i] = (actions[0][i][0] * 11 + actions[0][i][1])
 
-        batch_actions = torch.from_numpy(batch_actions).to(device) # Send batched actions to gpu
-        players[0].memory.push(torch.from_numpy(prev_observation).to(device),batch_actions, # Add all to memory
-            torch.from_numpy(observations[0]).to(device),reward_0)
+        #action_0 = actions[0][0][0] * 11 + actions[0][0][1]
+
+        batch_actions = torch.from_numpy(batch_actions) # Send batched actions to gpu
+        players[0].prioritized_memory.push(torch.from_numpy(prev_observation),batch_actions, # Add all to memory
+            reward_0,torch.from_numpy(observations[0]),done)
         
         players[0].optimize_model()
         players[0].update_target(i_episode)
@@ -205,14 +210,28 @@ for i_episode in range(1, n_episodes+1):
     #   End Game Loop   #
     #####################
 
+    #### BATCH UPDATE ####
+    # This updates the batch size (allegedly comparable to decaying the learning rate)
+    # Only update a certain number of times
+    if i_episode % k == 0:
+        players[0].update_batch()
+    #### BATCH UPDATE ####
+
     ### Updated win calculator to reflect new reward system
-    if(reward[0] > reward[1]):
+    if won:
         score += 1
         short_term_wr[(i_episode-1)%k] = 1
-    elif(reward[0] == reward[1]):
-        ties += 1
     else:
         losses += 1
+
+    # Old win condition
+    #if(reward[0] > reward[1]):
+    #    score += 1
+    #    short_term_wr[(i_episode-1)%k] = 1
+    #elif(reward[0] == reward[1]):
+    #    ties += 1
+    #else:
+    #    losses += 1
     ###
 
     #############################################
@@ -223,6 +242,7 @@ for i_episode in range(1, n_episodes+1):
     epsilonVals.append(current_eps)
     lossVals.append(current_loss)
     short_term_final_score[(i_episode-1)%k] = final_score
+    short_term_final_score_random[(i_episode-1)%k] = final_score_random
     q_values = q_values / 150
     qVals.append(q_values)
     #############################################
@@ -230,17 +250,20 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Q-Value: {:.2f} Final Score: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,q_values,final_score), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f} Wins: {} Losses: {} Ties: {} Eps: {:.2f} Loss: {:.2f} Average Q-Value: {:.2f} Final Score: {:.2f} Final Score Random {:.2f} Reward {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,q_values,final_score,final_score_random,reward[0]), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
         short_term_final_scores.append(np.mean(short_term_final_score))
         short_term_final_score = np.zeros((k,), dtype=int)
+        short_term_final_scores_random.append(np.mean(short_term_final_score_random))
+        short_term_final_score_random = np.zeros((k,), dtype=int)
 
-        #### REWARD DECAY ####
-        reward_decay -= 0.5 # this reduces the reward decay after k episodes to punish the agent more for losing overtime
-        #### REWARD DECAY ####
+        #### REWARD SHAPING ####
+        # Update reward_shaper
+        reward_shaper.update_rewards(i_episode)
+        #### REWARD SHAPING ####
 
     ################################
     env.close()
@@ -261,6 +284,7 @@ par1 = ax1.twinx()
 par3 = ax1.twinx()
 par2 = ax2.twinx()
 par4 = ax2.twinx()
+par5 = ax3.twinx()
 par3.spines["right"].set_position(("axes", 1.1))
 par4.spines["right"].set_position(("axes", 1.1))
 #########################
@@ -304,6 +328,7 @@ ax2.set_xlabel('Episode #')
 #   Average Reward Plot #
 #########################
 ax3.plot(np.arange(0, n_episodes+1,k),short_term_final_scores)
+par5.plot(np.arange(0, n_episodes+1,k),short_term_final_scores)
 ax3.set_ylabel('Average Final Scores')
 ax3.yaxis.label.set_color('blue')
 #########################
