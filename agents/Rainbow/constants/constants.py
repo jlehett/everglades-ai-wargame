@@ -1,9 +1,9 @@
 import json
+import os
 
-
-class constants:
+class constants():
     def __init__(self, constants_path):
-        with open(constants_path, 'r') as f:
+        with open(os.getcwd() + constants_path, 'r') as f:
             constants = json.load(f)
 
         # game setup
@@ -35,8 +35,8 @@ class constants:
         # environment
         self.env_name = constants['environment']['env_name']
         self.config_dir = constants['environment']['config_dir']
-        self.map_file = self.env_constants + constants['environment']['map_file']
-        self.setup_file = self.env_constants + constants['environment']['setup_file']
-        self.unit_file = self.env_constants + constants['environment']['unit_file']
+        self.map_file = self.config_dir + constants['environment']['map_file']
+        self.setup_file = self.config_dir + constants['environment']['setup_file']
+        self.unit_file = self.config_dir + constants['environment']['unit_file']
         self.env_output_dir = constants['environment']['env_output_dir']
         self.debug = False

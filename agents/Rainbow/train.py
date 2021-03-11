@@ -10,8 +10,10 @@ from collections import deque
 import numpy as np
 from data.graph import graph
 from constants.constants import constants
+from agent import DQNAgent
+from State_Machine.random_actions_delay import random_actions_delay
 
-constants_path = "constants.json"
+constants_path = "/constants/constants.json"
 constants = constants(constants_path)
 
 debug = constants.debug
@@ -24,10 +26,9 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(env.num_actions_per_turn, env.observation_space,0,LR,REPLAY_SIZE,BATCH_SIZE,
-                        GAMMA,WEIGHT_DECAY,EXPLORATION,EPS_START,EPS_END,EPS_DECAY,TARGET_UPDATE)
+players[0] = DQNAgent(0, constants.map_file, env.observation_space)
 names[0] = "DQN Agent"
-players[1] = dfs_attack(env.num_actions_per_turn, 1, map_name)
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, constants.map_file)
 names[1] = 'Random Agent'
 #################
 

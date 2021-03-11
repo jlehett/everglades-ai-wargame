@@ -11,8 +11,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
        
-from segment_tree import MinSegmentTree, SumSegmentTree
-from ReplayMemory import ReplayBuffer
+from agent_attributes.segment_tree import MinSegmentTree, SumSegmentTree
+from agent_attributes.ReplayMemory import ReplayBuffer
 
 class PrioritizedReplayBuffer(ReplayBuffer):
     """Prioritized Replay buffer.

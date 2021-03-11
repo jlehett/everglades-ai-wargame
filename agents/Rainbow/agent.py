@@ -12,7 +12,7 @@ from typing import Deque, Dict, List, Tuple
 
 from agent_attributes.PER import PrioritizedReplayBuffer
 from agent_attributes.Network import Network
-from ReplayMemory import ReplayBuffer
+from agent_attributes.ReplayMemory import ReplayBuffer
 
 TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
 EVALUATE_EPSILON = 0.00 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
@@ -73,10 +73,10 @@ class DQNAgent():
         # Create the NStepModule
         #self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
         if N_STEP > 1:
-            self.NStepMemory = ReplayBuffer(observation_space, MEMORY_SIZE, BATCH_SIZE, N_STEP, GAMMA)
+            self.NStepMemory = ReplayBuffer(observation_space.shape[0], MEMORY_SIZE, BATCH_SIZE, N_STEP, GAMMA)
 
         # PER memory
-        self.ReplayMemory = PrioritizedReplayBuffer(observation_space, MEMORY_SIZE, BATCH_SIZE, ALPHA)
+        self.ReplayMemory = PrioritizedReplayBuffer(observation_space.shape[0], MEMORY_SIZE, BATCH_SIZE, ALPHA)
 
         self.transition = list()
 
@@ -108,7 +108,7 @@ class DQNAgent():
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
 
         # Set up the map data to use
-        with open('./config/' + map_name) as fid:
+        with open(map_name) as fid:
             self.map_dat = json.load(fid)
             self.nodes_map = {}
             for i, in_node in enumerate(self.map_dat['nodes']):
@@ -309,7 +309,7 @@ class DQNAgent():
             self.NStepMemory.trackGameState(*self.transition)
         else:
             one_step_transition = self.transition
-            
+
         if one_step_transition:
             self.ReplayMemory.trackGameState(*self.transition)
 

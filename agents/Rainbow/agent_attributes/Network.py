@@ -14,7 +14,7 @@ import torch.optim as optim
 from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
 
-from noisynet import NoisyLinear
+from agent_attributes.noisynet import NoisyLinear
 
 class Network(nn.Module):
     def __init__(
