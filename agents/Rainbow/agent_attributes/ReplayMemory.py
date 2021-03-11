@@ -110,3 +110,10 @@ class ReplayBuffer:
 
     def __len__(self) -> int:
         return self.size
+
+    def isMemoryLargeEnoughToTrain(self, batch_size):
+        """
+            @Public
+            Returns true if we can start training or false otherwise.
+        """
+        return len(self.replay_memory) >= batch_size

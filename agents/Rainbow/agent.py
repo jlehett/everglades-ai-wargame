@@ -8,6 +8,7 @@ import numpy as np
 from collections import namedtuple
 import pickle
 import os
+from typing import Deque, Dict, List, Tuple
 
 from agent_attributes.PER import PrioritizedReplayBuffer
 from agent_attributes.Network import Network
@@ -37,7 +38,7 @@ MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
 GAMMA = 0.99 # The amount to discount the future rewards by
 ALPHA = 0.2
 LEARNING_RATE = 1e-4 # The learning rate to be used by the optimizer
-N_STEP = 1 # The number of steps to use in multi-step learning
+N_STEP = 3 # The number of steps to use in multi-step learning
 EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
 
 # distributional
@@ -76,6 +77,8 @@ class DQNAgent():
 
         # PER memory
         self.ReplayMemory = PrioritizedReplayBuffer(observation_space, MEMORY_SIZE, BATCH_SIZE, ALPHA)
+
+        self.transition = list()
 
         # Set up the network
         #self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE)
@@ -290,8 +293,25 @@ class DQNAgent():
         previous_state_allies_on_node = self.get_allies_on_node_data(previous_state)
         for swarm_num in range(NUM_GROUPS):
             per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
+            # -- We need to convert previous_state to the per-swarm's previous states --
+        
+        # convert next game state
+        per_swarm_next_state = np.zeros((NUM_GROUPS, INPUT_SIZE))
+        # We can compute the number of allies on each node outside of the for loop
+        next_state_allies_on_node = self.get_allies_on_node_data(next_state)
+        for swarm_num in range(NUM_GROUPS):
+            per_swarm_next_state[swarm_num] = self.create_swarm_obs(swarm_num, next_state, next_state_allies_on_node)
+        
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
-        self.ReplayMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
+        self.transition += [per_swarm_previous_state, actions, reward / 10000.0 , per_swarm_next_state, 0]
+
+        if N_STEP > 1:
+            self.NStepMemory.trackGameState(*self.transition)
+        else:
+            one_step_transition = self.transition
+            
+        if one_step_transition:
+            self.ReplayMemory.trackGameState(*self.transition)
 
     def optimize_model(self):
         """
