@@ -1,5 +1,5 @@
-from agents.Minimized.QNetwork import QNetwork
-from agents.Minimized.Multi_Step import NStepModule
+from agents.Smart_State.QNetwork import QNetwork
+from agents.Smart_State.Multi_Step import NStepModule
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -10,6 +10,8 @@ from collections import namedtuple
 import pickle
 import os
 
+from agents.Smart_State.Move_Translation import get_move
+
 EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
 TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
@@ -19,19 +21,20 @@ TRAIN_LR_MIN = 1e-6 # The minimum learning rate value to use during training (wh
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
 NUM_GROUPS = 12 # The number of unit groups in the Everglades environment for the agent
+NUM_NODES = 11 # The number of nodes in the Everglades environment
 NUM_ACTIONS = 7 # The number of actions an agent can take in a single turn
 EVERGLADES_ACTION_SIZE = (NUM_ACTIONS, 2) # The action shape in an Everglades-readable format
 
-INPUT_SIZE = 59 # This is a custom value defined when creating the minimized input
-OUTPUT_SIZE = 11 # This is the same as the number of nodes
+INPUT_SIZE = 59 # This is a custom value defined when creating the smart state agent
+OUTPUT_SIZE = 5 # This is a custom value defined when creating the smart state agent
 FC1_SIZE = 80 # Number of nodes in the first hidden layer
 
-BATCH_SIZE = 256 # The number of inputs to train on at one time
-TARGET_UPDATE = 500 # The number of episodes to wait until we update the target network
-MEMORY_SIZE = 10000 # The number of experiences to store in memory replay
+BATCH_SIZE = 1024 # The number of inputs to train on at one time
+TARGET_UPDATE = 200 # The number of episodes to wait until we update the target network
+MEMORY_SIZE = 100000 # The number of experiences to store in memory replay
 GAMMA = 0.99 # The amount to discount the future rewards by
 N_STEP = 1 # The number of steps to use in multi-step learning
-EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
+EPS_DECAY = 0.995 # The rate at which epsilon decays at the end of each episode
 LR_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -133,24 +136,36 @@ class DQNAgent():
         sample = random.random()
         if sample < self.epsilon:
             # Take random actions
-            return self.get_random_actions()
+            return self.get_random_actions(obs)
         else:
             # Take best known actions
             return self.get_best_actions(obs)
 
-    def get_random_actions(self):
+    def get_random_actions(self, obs):
         """
         Get 7 random actions the agent should take in the Everglades environment.
 
         @returns 7x2 Numpy array tuple containing the final actions the agent has opted to take in an Everglades-readable format
         """
         # Create empty array for action storage
-        actions = np.zeros(EVERGLADES_ACTION_SIZE)
+        actions = np.zeros(NUM_ACTIONS)
         # Determine the unit numbers randomly
-        actions[:, 0] = np.random.choice(NUM_GROUPS, NUM_ACTIONS, replace=False)
-        actions[:, 1] = np.random.choice(self.num_nodes, NUM_ACTIONS, replace=False) + 1
-        # Return the final action selections
-        return actions
+        swarms = np.random.choice(NUM_GROUPS, NUM_ACTIONS, replace=False)
+        # Determine the directions randomly
+        directions = np.random.choice(OUTPUT_SIZE, NUM_ACTIONS, replace=True)
+        # Grab each swarm's action
+        for i, swarm_num in enumerate(swarms):
+            swarm_node_number_0_indexed = self.get_swarm_node_number(swarm_num, obs)
+            action = get_move(swarm_node_number_0_indexed, directions[i])
+            actions[i] = action
+        # Create the final action selections array
+        final_action_array = np.zeros(EVERGLADES_ACTION_SIZE)
+        final_direction_array = np.zeros(EVERGLADES_ACTION_SIZE)
+        for i in range(NUM_ACTIONS):
+            final_action_array[i] = np.array([swarms[i], actions[i]])
+            final_direction_array[i] = np.array([swarms[i], directions[i]])
+        # Return both the final action array and the selected directions
+        return final_action_array, final_direction_array
 
     def get_best_actions(self, obs):
         """
@@ -169,13 +184,12 @@ class DQNAgent():
             swarm_decisions,
             key=lambda k: k['best_q_value']
         )
-        # for decision in sorted_swarm_decisions:
-        #    print('Swarm: ' + str(decision['best_action'][0]) + '\t| Node: ' + str(decision['best_action'][1]) + '\t| Q-value: ' + str(decision['best_q_value'].item()))
-        # print('')
         # Return the top 7 actions
         actions = np.zeros(EVERGLADES_ACTION_SIZE)
+        directions = np.zeros(EVERGLADES_ACTION_SIZE)
         actions[:] = [decision['best_action'] for decision in sorted_swarm_decisions[:7]]
-        return actions
+        directions[:] = [decision['best_direction'] for decision in sorted_swarm_decisions[:7]]
+        return actions, directions
 
     def get_allies_on_node_data(self, obs):
         """
@@ -229,12 +243,16 @@ class DQNAgent():
         # Find the predicted Q values for the swarm for all 12 possible actions
         with torch.no_grad():
             swarm_predicted_q = self.policy_net(swarm_obs)
-        # Find the best predicted node
-        best_node = torch.argmax(swarm_predicted_q) + 1
+        # Find the best predicted direction
+        best_direction = torch.argmax(swarm_predicted_q)
+        # Use the Move_Translation helper file to get the move the swarm would take by going in that direction
+        swarm_node = self.get_swarm_node_number(swarm_number, obs)
+        best_node = get_move(swarm_node, best_direction)
         # Find the best predicted q value
         best_q_value = torch.max(swarm_predicted_q)
         # Create the swarm thought processes object to return
         swarm_thought_processes = {
+            'best_direction': np.array([swarm_number, best_direction]),
             'best_action': np.array([swarm_number, best_node]),
             'best_q_value': best_q_value,
         }
@@ -275,6 +293,16 @@ class DQNAgent():
         # Return the final swarm observation array
         return swarm_obs
 
+    def get_swarm_node_number(self, swarm_number, obs):
+        """
+        Grab the node number that a swarm is at given the observation and swarm number.
+
+        @param swarm_number The swarm to query
+        @param ibs The observation array consisting of all 105 values passed by the Everglades environment
+        @returns An integer representing the node number the swarm is at in a 0-indexed system
+        """
+        return obs[45+5*swarm_number] - 1
+
     def remember_game_state(
         self,
         previous_state=None,
@@ -297,7 +325,7 @@ class DQNAgent():
         for swarm_num in range(NUM_GROUPS):
             per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
-        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
+        self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward)
 
     def optimize_model(self):
         """
@@ -330,7 +358,7 @@ class DQNAgent():
         state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
 
         # Compute the swarm's future value for next states
-        next_state_swarms_predicted_qs_batch = torch.zeros((self.batch_size, 12, self.num_nodes), device=device)
+        next_state_swarms_predicted_qs_batch = torch.zeros((self.batch_size, 12, OUTPUT_SIZE), device=device)
         for swarm_num in range(NUM_GROUPS):
             next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
         # Limit future value to the best q value for each swarm

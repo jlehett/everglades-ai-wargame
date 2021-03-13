@@ -10,13 +10,15 @@ from collections import deque
 
 import numpy as np
 
-from everglades_server import server
-from agents.Minimized.DQNAgent import DQNAgent
-from agents.State_Machine.random_actions_delay import random_actions_delay
-from agents.State_Machine.base_rush_v1 import base_rushV1
+import utils.reward_shaping as reward_shaping
 
-DISPLAY = True # Set whether the visualizer should ever run
-TRAIN = False # Set whether the agent should learn or not
+from everglades_server import server
+from agents.Smart_State.DQNAgent import DQNAgent
+from agents.State_Machine.random_actions_delay import random_actions_delay
+from agents.State_Machine.random_actions import random_actions
+
+DISPLAY = False # Set whether the visualizer should ever run
+TRAIN = True # Set whether the agent should learn or not
 
 #############################
 # Environment Config Setup  #
@@ -43,11 +45,11 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=TRAIN,
-    network_save_name='agents/Minimized/saved_models/new',
-    network_load_name='agents/Minimized/saved_models/new',
+    network_save_name='agents/Smart_State/saved_models/new',
+    network_load_name='agents/Smart_State/saved_models/new',
 )
 names[0] = "DQN Agent"
-players[1] = base_rushV1(env.num_actions_per_turn, 1)
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent Delay'
 #################
 
@@ -95,18 +97,22 @@ for i_episode in range(1, n_episodes+1):
 
     # Reset the reward average
     while not done:
-        if DISPLAY and i_episode % 5 == 0:
-            env.render()
+        if DISPLAY:
+            if i_episode % 5 == 0:
+                env.render()
 
-        # Get actions for each player
-        for pid in players:
-            actions[pid] = players[pid].get_action( observations[pid] )
+        # Get actions for agent
+        actions[0], directions = players[0].get_action( observations[0] )
+        # Get actions for random agent
+        actions[1] = players[1].get_action( observations[1] )
 
         # Grab previos observation for agent
         prev_observation = observations[0]
 
         # Update env
         observations, reward, done, info = env.step(actions)
+        
+        reward[0] = reward_shaping.basic_reward(reward[0], reward[1], done)
 
         #########################
         # Handle agent update   #
@@ -114,7 +120,7 @@ for i_episode in range(1, n_episodes+1):
         players[0].remember_game_state(
             prev_observation,
             observations[0],
-            actions[0],
+            directions,
             reward[0]
         )
         players[0].optimize_model()
