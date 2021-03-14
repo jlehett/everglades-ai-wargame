@@ -49,7 +49,7 @@ players[0] = DQNAgent(
     network_load_name='agents/Smart_State/saved_models/new',
 )
 names[0] = "DQN Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent Delay'
 #################
 
@@ -111,8 +111,6 @@ for i_episode in range(1, n_episodes+1):
 
         # Update env
         observations, reward, done, info = env.step(actions)
-        
-        reward[0] = reward_shaping.basic_reward(reward[0], reward[1], done)
 
         #########################
         # Handle agent update   #
@@ -121,7 +119,7 @@ for i_episode in range(1, n_episodes+1):
             prev_observation,
             observations[0],
             directions,
-            reward[0]
+            reward_shaping.basic_reward(reward, done)
         )
         players[0].optimize_model()
         #########################
