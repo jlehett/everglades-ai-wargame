@@ -6,7 +6,8 @@ import gym_everglades
 import pdb
 import sys
 import matplotlib.pyplot as plt
-from collections import deque 
+from collections import deque
+from statsmodels.stats.proportion import proportion_confint
 
 import numpy as np
 
@@ -18,7 +19,7 @@ from agents.State_Machine.random_actions_delay import random_actions_delay
 from agents.State_Machine.random_actions import random_actions
 
 DISPLAY = False # Set whether the visualizer should ever run
-TRAIN = True # Set whether the agent should learn or not
+TRAIN = False # Set whether the agent should learn or not
 
 #############################
 # Environment Config Setup  #
@@ -94,6 +95,7 @@ for i_episode in range(1, n_episodes+1):
         pnames = names,
         debug = debug
     )
+    turn_num = 0
 
     # Reset the reward average
     while not done:
@@ -119,12 +121,15 @@ for i_episode in range(1, n_episodes+1):
             prev_observation,
             observations[0],
             directions,
-            reward_shaping.basic_reward(reward, done)
+            reward_shaping.reward_short_games(reward, done, turn_num)
         )
         players[0].optimize_model()
         #########################
 
         current_eps = players[0].epsilon
+
+        # Increment the turn number
+        turn_num += 1
 
 
     ################################
@@ -153,11 +158,19 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
-    if i_episode % k == 0:
-        print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
-        short_term_scores.append(np.mean(short_term_wr))
-        short_term_wr = np.zeros((k,), dtype=int)
+    if TRAIN:
+        print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
+        if i_episode % k == 0:
+            print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
+            short_term_scores.append(np.mean(short_term_wr))
+            short_term_wr = np.zeros((k,), dtype=int)
+    else:
+        confint = proportion_confint(score, i_episode, 0.05, 'normal')
+        confint_range = (confint[1] - confint[0]) * 100.0
+        if i_episode > 50:
+            print('\rEpisode: {}\tCurrent WR: {:.2f}%\tActual WR: {:2.1f}% ± {:2.1f}%\t\tLower: {:2.1f}%\tUpper: {:2.1f}%'.format(i_episode, current_wr * 100.0, current_wr * 100.0, confint_range / 2.0, confint[0]*100.0, confint[1]*100.0))
+        else:
+            print('\rEpisode: {}\tCurrent WR: {:.2f}%\tNot Enough Data to Determine Actual WR'.format(i_episode, current_wr * 100.0))
         
     ################################
     env.close()
