@@ -58,6 +58,7 @@ def displaySpecifiedKeys(save_file_path, keys_to_display):
     save file, in case the file does not have the `keys to display` property yet.
 
     @param {string} save_file_path The path to the save file to load and display the keys of
+    @param {string[]} keys_to_display The keys to display from the save file
     """
     # If the file does not exist, return early; nothing can be done
     if not os.path.exists(save_file_path + '.pickle'):
