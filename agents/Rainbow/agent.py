@@ -9,6 +9,7 @@ from collections import namedtuple
 import pickle
 import os
 from typing import Deque, Dict, List, Tuple
+from torch.nn.utils import clip_grad_norm_
 
 from agent_attributes.PER import PrioritizedReplayBuffer
 from agent_attributes.Network import Network
@@ -44,6 +45,13 @@ EPS_DECAY = 0.999 # The rate at which epsilon decays at the end of each episode
 # distributional
 V_MIN = 0.0
 V_MAX = 200.0
+ATOM_SIZE = 51
+
+# PER
+BETA = 0.6
+PRIOR_EPS = 1e-6
+
+TARGET_UPDATE = 100
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -63,6 +71,10 @@ class DQNAgent():
         @param map_name The name of the map file to load in
         """
         # Store variables
+        self.device = device
+
+        self.update_count = 0
+
         if TRAIN:
             self.epsilon = TRAIN_EPSILON_START
         else:
@@ -77,6 +89,8 @@ class DQNAgent():
 
         # PER memory
         self.ReplayMemory = PrioritizedReplayBuffer(observation_space.shape[0], MEMORY_SIZE, BATCH_SIZE, ALPHA)
+        self.beta = BETA
+        self.prior_eps = PRIOR_EPS
 
         self.transition = list()
 
@@ -103,6 +117,7 @@ class DQNAgent():
         # Prevent the target net from learning during training; only the policy
         # net should be learning
         self.target_net.eval()
+        self.num_episodes = 0
 
         # Set the optimizer to use in training the network
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
@@ -115,50 +130,11 @@ class DQNAgent():
                 self.nodes_map[in_node['ID']] = in_node
             self.num_nodes = len(self.map_dat['nodes'])
 
+    
     def get_action(self, obs):
-        """
-        Get an action for the current step in the environment.
-        If a random sample between [0, 1] < epsilon, use a random
-        action. Otherwise, exploit the best known action based on network
-        predictions.
-
-        @param obs The observation array consisting of all 105 values passed by the Everglades environment
-        @returns The 7x2 tuple containing the final actions the agent has opted to take in an Everglades-readable format
-        """
-        # Get the random sample to determine whether to use random actions
-        # or the best known actions.
-        sample = random.random()
-        if sample < self.epsilon:
-            # Take random actions
-            return self.get_random_actions()
-        else:
-            # Take best known actions
-            return self.get_best_actions(obs)
-
-    def get_random_actions(self):
-        """
-        Get 7 random actions the agent should take in the Everglades environment.
-
-        @returns 7x2 Numpy array tuple containing the final actions the agent has opted to take in an Everglades-readable format
-        """
-        # Create empty array for action storage
+        # decide best action; random if sample < current epsilon
         actions = np.zeros(EVERGLADES_ACTION_SIZE)
-        # Determine the unit numbers randomly
-        actions[:, 0] = np.random.choice(NUM_GROUPS, NUM_ACTIONS, replace=False)
-        actions[:, 1] = np.random.choice(self.num_nodes, NUM_ACTIONS, replace=False) + 1
-        # Return the final action selections
-        return actions
-
-    def get_best_actions(self, obs):
-        """
-        Get the 7 actions the agent believes are the best options given the current
-        observation. Each unit swarm the agent controls should come up with their own
-        Q values and best action to take. This function will take the 7 best actions
-        that are returned among all unit swarms.
-
-        @param obs The observation array consisting of all 105 values passed by the Everglades environment
-        @returns 7x2 Numpy array containing the best actions the agent has predicted
-        """
+        # Take best known actions
         # Get all swarm decisions
         swarm_decisions = self.get_all_swarm_decisions(obs)
         # Sort the swarm decisions array by the best q values
@@ -166,11 +142,6 @@ class DQNAgent():
             swarm_decisions,
             key=lambda k: k['best_q_value']
         )
-        # for decision in sorted_swarm_decisions:
-        #     print('Swarm: ' + str(decision['best_action'][0]) + '\t| Node: ' + str(decision['best_action'][1]) + '\t| Q-value: ' + str(decision['best_q_value'].item()))
-        # print('')
-        # Return the top 7 actions
-        actions = np.zeros(EVERGLADES_ACTION_SIZE)
         actions[:] = [decision['best_action'] for decision in sorted_swarm_decisions[:7]]
         return actions
 
@@ -238,6 +209,44 @@ class DQNAgent():
         # Return the final swarm thought processes object
         return swarm_thought_processes
 
+    
+    def remember_game_state(
+        self,
+        previous_state=None,
+        next_state=[],
+        actions=None,
+        reward=None,
+        done=0,
+    ):
+        """
+        Add the new experience to the NStepModule for experience replay.
+
+        @param [previous_state] The previous observation state of the Everglades environment
+        @param [next_state] The next observation state of the Everglades environment after taking specified action
+        @param [actions] The actions that were taken to move agent from previous_state to next_state
+        @param [reward] The reward received by the agent for taking specified actions in the previous_state
+        """
+        # -- We need to convert previous_state to the per-swarm's previous states --
+        per_swarm_previous_state = np.zeros((NUM_GROUPS, INPUT_SIZE))
+        # We can compute the number of allies on each node outside of the for loop
+        previous_state_allies_on_node = self.get_allies_on_node_data(previous_state)
+        for swarm_num in range(NUM_GROUPS):
+            per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
+            # -- We need to convert previous_state to the per-swarm's previous states --
+        
+        # convert next game state
+        per_swarm_next_state = np.zeros((NUM_GROUPS, INPUT_SIZE))
+        # We can compute the number of allies on each node outside of the for loop
+        next_state_allies_on_node = self.get_allies_on_node_data(next_state)
+        for swarm_num in range(NUM_GROUPS):
+            per_swarm_next_state[swarm_num] = self.create_swarm_obs(swarm_num, next_state, next_state_allies_on_node)
+        
+        # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
+        if N_STEP > 1:
+            self.NStepMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0, per_swarm_next_state, done)
+
+        self.ReplayMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0, per_swarm_next_state, done)
+
     def create_swarm_obs(self, swarm_number, obs, allies_on_node):
         """
         Create the individual swarm's pre-processed input.
@@ -272,106 +281,114 @@ class DQNAgent():
         # Return the final swarm observation array
         return swarm_obs
 
-    def remember_game_state(
-        self,
-        previous_state=None,
-        next_state=[],
-        actions=None,
-        reward=None,
-    ):
-        """
-        Add the new experience to the NStepModule for experience replay.
-
-        @param [previous_state] The previous observation state of the Everglades environment
-        @param [next_state] The next observation state of the Everglades environment after taking specified action
-        @param [actions] The actions that were taken to move agent from previous_state to next_state
-        @param [reward] The reward received by the agent for taking specified actions in the previous_state
-        """
-        # -- We need to convert previous_state to the per-swarm's previous states --
-        per_swarm_previous_state = np.zeros((NUM_GROUPS, INPUT_SIZE))
-        # We can compute the number of allies on each node outside of the for loop
-        previous_state_allies_on_node = self.get_allies_on_node_data(previous_state)
-        for swarm_num in range(NUM_GROUPS):
-            per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
-            # -- We need to convert previous_state to the per-swarm's previous states --
-        
-        # convert next game state
-        per_swarm_next_state = np.zeros((NUM_GROUPS, INPUT_SIZE))
-        # We can compute the number of allies on each node outside of the for loop
-        next_state_allies_on_node = self.get_allies_on_node_data(next_state)
-        for swarm_num in range(NUM_GROUPS):
-            per_swarm_next_state[swarm_num] = self.create_swarm_obs(swarm_num, next_state, next_state_allies_on_node)
-        
-        # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
-        self.transition += [per_swarm_previous_state, actions, reward / 10000.0 , per_swarm_next_state, 0]
-
-        if N_STEP > 1:
-            self.NStepMemory.trackGameState(*self.transition)
-        else:
-            one_step_transition = self.transition
-
-        if one_step_transition:
-            self.ReplayMemory.trackGameState(*self.transition)
-
     def optimize_model(self):
         """
         Optimize the network via a training function. Will return immediately
         without training if there is not enough memory in the experience replay.
         """
-        # If training is not set to true, we do not want to optimize the model
-        if not TRAIN:
-            return
-        # If the NStepModule's experience replay isn't large enough, we should bail out.
-        # Otherwise, we can grab sample data from the replay memory.
+        self.update_count += 1
+        if self.update_count % TARGET_UPDATE == 0:
+            self.hard_update()
+
         if not self.ReplayMemory.isMemoryLargeEnoughToTrain(BATCH_SIZE):
             return
-        transitions = self.ReplayMemory.sampleReplayMemory(BATCH_SIZE)
 
-        # Create the batch of data to use
-        batch = Transition(*zip(*transitions))
-        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
-        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs))
-        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1)
-        reward_batch = torch.from_numpy(np.asarray(batch.reward))
-        # Compute a mask of non-final states and concatenate the batch elements
-        non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone))
-        non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :]
+        """Update the model by gradient descent."""
+        # PER needs beta to calculate weights
+        samples = self.ReplayMemory.sample_batch(self.beta)
+        weights = torch.FloatTensor(
+            samples["weights"].reshape(-1, 1)
+        ).to(self.device)
+        indices = samples["indices"]
 
-        # Compute the swarm's predicted qs for the current state
-        state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
+        # 1-step Learning loss
+        elementwise_loss = self.compute_loss(samples, GAMMA)
+        
+        # PER: importance sampling before average
+        loss = torch.mean(elementwise_loss * weights)
+        
+        # N-step Learning loss
+        # we are gonna combine 1-step loss and n-step loss so as to
+        # prevent high-variance. The original rainbow employs n-step loss only.
+        if N_STEP > 1:
+            gamma = GAMMA ** N_STEP
+            samples = self.NStepMemory.sample_batch_from_idxs(indices)
+            elementwise_loss_n_loss = self.compute_loss(samples, gamma)
+            elementwise_loss += elementwise_loss_n_loss
 
-        # Compute the swarm's future value for next states
-        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
-        next_action_taken_mask = torch.zeros((BATCH_SIZE, 12, 1), device=device).type(torch.int64)
-        for swarm_num in range(NUM_GROUPS):
-            # Use the policy net to get the action it would have taken for the swarm in the next state
-            next_action_taken_mask[:, swarm_num, 0] = torch.argmax(self.policy_net(nth_next_state_swarms_batch[:, swarm_num, :]), axis=1).type(torch.int64)
-            # Use the target net to compute all possible action values for next state.
-            next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
-        # Limit future value to the avg q value of the actions that would have been chosen for each swarm
-        #print(next_action_taken_mask)
-        selected_next_state_swarms_predicted_qs_batch = next_state_swarms_predicted_qs_batch.gather(2, next_action_taken_mask)
-        max_next_state_predicted_q_batch = torch.mean(selected_next_state_swarms_predicted_qs_batch, axis=1)
-        # Compute the estimated future reward
-        estimated_future_reward = (max_next_state_predicted_q_batch * (GAMMA ** N_STEP) + reward_batch.unsqueeze(1)).to(device)
-
-        # Compute the loss
-        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor))
+            # PER: importance sampling before average
+            loss = torch.mean(elementwise_loss * weights)
+        
         self.optimizer.zero_grad()
         loss.backward()
-        for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
+        clip_grad_norm_(self.policy_net.parameters(), 10.0)
         self.optimizer.step()
 
-    def end_of_episode(self, episodes):
+        # PER: update priorities
+        loss_for_prior = elementwise_loss.detach().cpu().numpy()
+        new_priorities = loss_for_prior + self.prior_eps
+        self.ReplayMemory.update_priorities(indices, new_priorities)
+
+        # NoisyNet: reset noise
+        self.policy_net.reset_noise()
+        self.target_net.reset_noise()
+
+        return loss.item()
+
+    def compute_loss(self, samples: Dict[str, np.ndarray], gamma: float) -> torch.Tensor:
+        """Return categorical dqn loss."""
+        device = self.device  # for shortening the following lines
+        state = torch.FloatTensor(samples["obs"]).to(device)
+        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+        action = torch.LongTensor(samples["acts"]).to(device)
+        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
+        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+        
+        # Categorical DQN algorithm
+        delta_z = float(V_MAX - V_MIN) / (ATOM_SIZE - 1)
+
+        with torch.no_grad():
+            # Double DQN
+            next_action = self.policy_net(next_state).argmax(1)
+            next_dist = self.target_net.dist(next_state)
+            next_dist = next_dist[range(BATCH_SIZE), next_action]
+
+            t_z = reward + (1 - done) * gamma * self.support
+            t_z = t_z.clamp(min=V_MIN, max=V_MAX)
+            b = (t_z - V_MIN) / delta_z
+            l = b.floor().long()
+            u = b.ceil().long()
+
+            offset = (
+                torch.linspace(
+                    0, (BATCH_SIZE - 1) * ATOM_SIZE, BATCH_SIZE
+                ).long()
+                .unsqueeze(1)
+                .expand(BATCH_SIZE, ATOM_SIZE)
+                .to(self.device)
+            )
+
+            proj_dist = torch.zeros(next_dist.size(), device=self.device)
+            proj_dist.view(-1).index_add_(
+                0, (l + offset).view(-1), (next_dist * (u.float() - b)).view(-1)
+            )
+            proj_dist.view(-1).index_add_(
+                0, (u + offset).view(-1), (next_dist * (b - l.float())).view(-1)
+            )
+
+        dist = self.policy_net.dist(state)
+        log_p = torch.log(dist[range(BATCH_SIZE), action])
+        elementwise_loss = -(proj_dist * log_p).sum(1)
+
+        return elementwise_loss
+
+    def end_of_episode(self, episodes, total_episodes):
         """
         Perform end-of-episode functions for the agent such as updating the
         target network and saving game off to replay memory.
 
         @param episodes The number of episodes that have elapsed since the current training session began
         """
-        # Add the played game to memory
-        self.ReplayMemory.addGameToReplayMemory()
         # Update target network every UPDATE_TARGET_AFTER episodes
         if episodes % TARGET_UPDATE == 0 and TRAIN:
             self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -380,9 +397,14 @@ class DQNAgent():
             self.save_network(episodes)
         # Decay epsilon
         if TRAIN:
-            self.epsilon *= EPS_DECAY
-            if self.epsilon < TRAIN_EPSILON_MIN:
-                self.epsilon = TRAIN_EPSILON_MIN
+            # noisy net deals with epsilon
+            # beta for PER
+            fraction = min(episodes / total_episodes, 1.0)
+            self.beta = self.beta + fraction * (1.0 - self.beta)
+
+    def _target_hard_update(self):
+        """Hard update: target <- local."""
+        self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def save_network(self, episodes):
         """
@@ -401,6 +423,3 @@ class DQNAgent():
             print('Saved Network')
         else:
             print('Save Failed - Save File Not Specified')
-
-Transition = namedtuple('Transition',
-                        ('swarm_obs', 'swarm_action', 'next_state_swarms', 'reward', 'doesNotHitDone'))
