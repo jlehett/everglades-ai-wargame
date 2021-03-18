@@ -52,7 +52,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.sum_tree = SumSegmentTree(tree_capacity)
         self.min_tree = MinSegmentTree(tree_capacity)
         
-    def store(
+    def trackGameState(
         self, 
         obs: np.ndarray, 
         act: int, 

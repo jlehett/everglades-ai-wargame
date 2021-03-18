@@ -37,7 +37,7 @@ class ReplayBuffer:
         self.n_step = n_step
         self.gamma = gamma
 
-    def store(
+    def trackGameState(
         self, 
         obs: np.ndarray, 
         act: np.ndarray, 
@@ -116,4 +116,4 @@ class ReplayBuffer:
             @Public
             Returns true if we can start training or false otherwise.
         """
-        return len(self.replay_memory) >= batch_size
+        return len(self) >= batch_size

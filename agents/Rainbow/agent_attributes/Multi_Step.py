@@ -8,7 +8,7 @@ OBSERVATION_SPACE = 105
     The NStepModule will contain necessary util functions for implementing N-Step Learning
     on a DQN agent.
 """
-class NStepModule:
+class ReplayBuffer:
     def __init__(self, n, discount_rate, memory_size):
         # Stores the modified replay memory constructed by the NStepModule to be used in the DQN agent
         self.replay_memory = NStepReplayMemory(memory_size)

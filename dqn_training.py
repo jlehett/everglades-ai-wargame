@@ -105,7 +105,8 @@ for i_episode in range(1, n_episodes+1):
             prev_observation,
             observations[0],
             actions[0],
-            reward[0]
+            reward[0],
+            done
         )
         players[0].optimize_model()
         #########################
