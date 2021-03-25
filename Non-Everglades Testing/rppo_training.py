@@ -13,28 +13,12 @@ import random
 import numpy as np
 
 from everglades_server import server
-from agents.RPPO.RPPOAgent import RPPOAgent
+from RPPO import RPPOAgent
 
 # Import agent to train against
 sys.path.append(os.path.abspath('../'))
-from agents.State_Machine.random_actions import random_actions
 
-from RewardShaping import RewardShaping
-from agents.State_Machine.random_actions_delay import random_actions_delay
-from agents.State_Machine.random_actions import random_actions
-from agents.State_Machine.bull_rush import bull_rush
-from agents.State_Machine.all_cycle import all_cycle
-from agents.State_Machine.base_rush_v1 import base_rushV1
-from agents.State_Machine.cycle_rush_turn25 import Cycle_BRush_Turn25
-from agents.State_Machine.cycle_rush_turn50 import Cycle_BRush_Turn50
-from agents.State_Machine.cycle_target_node import Cycle_Target_Node
-from agents.State_Machine.cycle_target_node1 import cycle_targetedNode1
-from agents.State_Machine.cycle_target_node11 import cycle_targetedNode11
-from agents.State_Machine.cycle_target_node11P2 import cycle_targetedNode11P2
-from agents.State_Machine.random_actions_2 import random_actions_2
-from agents.State_Machine.same_commands_2 import same_commands_2
-from agents.State_Machine.same_commands import same_commands
-from agents.State_Machine.swarm_agent import SwarmAgent
+#from RewardShaping import RewardShaping
 
 #from everglades-server import generate_map
 
@@ -56,45 +40,44 @@ output_dir = './game_telemetry/'
 debug = False
 
 ## Main Script
-env = gym.make('everglades-v0')
+env = gym.make('CartPole-v1')
 players = {}
 names = {}
 
 #####################
 #   PPO Constants   #
 #####################
-N_LATENT_VAR = 248
+N_LATENT_VAR = 64
 LR = 0.0001
 K_EPOCHS = 4
 GAMMA = 0.99
 BETAS = (0.9,0.999)
 EPS_CLIP = 0.2
-ACTION_DIM = 132
-OBSERVATION_DIM = 105
-NUM_GAMES_TILL_UPDATE = 5
-UPDATE_TIMESTEP = 1000
+ACTION_DIM = env.action_space.n
+OBSERVATION_DIM = env.observation_space.shape[0] - 1# Removing one observation feature to make POMDP
+NUM_GAMES_TILL_UPDATE = 25
+UPDATE_TIMESTEP = 2000#NUM_GAMES_TILL_UPDATE
 INTR_REWARD_STRENGTH = 0.9
-ICM_BATCH_SIZE = 150
+ICM_BATCH_SIZE = 200
 TARGET_KL = 0.01
 LAMBD = 0.95
 USE_ICM = False
+USE_GRU = True
 #################
 
 #################
 # Setup agents  #
 #################
 players[0] = RPPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP, 
-                        INTR_REWARD_STRENGTH, ICM_BATCH_SIZE, TARGET_KL, LAMBD, USE_ICM)
+                        INTR_REWARD_STRENGTH, ICM_BATCH_SIZE, TARGET_KL, LAMBD, USE_ICM, USE_GRU)
 names[0] = 'RPPO Agent'
 hidden = torch.zeros(N_LATENT_VAR).unsqueeze(0).unsqueeze(0)
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent'
 #################
 
 #############################
 #   Setup Reward Shaping    #
 #############################
-reward_shaper = RewardShaping()
+#reward_shaper = RewardShaping()
 #############################
 
 
@@ -102,8 +85,10 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 3000
+n_episodes = 5000
+loss_reward_decay = {0: -1} #reward decay for losing
 timestep = 0
+episodes_to_update = 0
 
 #########################
 # Statistic variables   #
@@ -123,9 +108,9 @@ current_actor_loss = 0
 actorLossVals = []
 current_critic_loss = 0
 criticLossVals = []
-entropy = 0
 current_temp = 0
 tempVals = []
+just_updated = True
 #########################
 
 #####################
@@ -137,21 +122,17 @@ for i_episode in range(1, n_episodes+1):
     #################
 
     done = 0
-    observations = env.reset(
-        players=players,
-        config_dir = config_dir,
-        map_file = map_file,
-        unit_file = unit_file,
-        output_dir = output_dir,
-        pnames = names,
-        debug = debug
-    )
+    observations = env.reset()
+    # Remove cart velocity to turn into POMDP
+    observations = np.delete(observations,1,0)
+    #observations = np.delete(observations,1,0)
 
     #players[1].reset()
-    turnNum = 0
+    score = 0
+    cumulative_reward = 0
     while not done:
-        if i_episode % 25 == 0:
-            env.render()
+        #if i_episode % 25 == 0:
+        #    env.render()
 
         ### Removed to save processing power
         # Print statements were taking forever
@@ -159,20 +140,37 @@ for i_episode in range(1, n_episodes+1):
         #    env.game.debug_state()
         ###
 
-        # Get actions for each player
-        #for pid in players:
-        #    actions[pid] = players[pid].get_action( observations[pid] )
-        actions[1] = players[1].get_action( observations[1] )
-        actions[0], hidden = players[0].get_action( observations[0], hidden )
+        action, hidden = players[0].get_action( observations, hidden )
 
         # Update env
-        #turn_scores,_ = env.game.game_turn(actions) # Gets the score from the server
-        observations, reward, done, info = env.step(actions)
+        observations, reward, done, info = env.step(action)
+
+        if not done:
+            reward = 0.01
+            #hidden = hidden.detach()
+        else:
+            # Iterate over loss_reward_decay to find nearest (but larger) required reward (key)
+            # Use that value as the reward decay
+            # If none found, give default decay
+            #found_less = False
+            #for required_reward in loss_reward_decay.keys():
+            #    if score < required_reward:
+            #        reward = loss_reward_decay.get(required_reward)
+            #        found_less = True
+            #        break
+            
+            #if not found_less:
+            reward = -1
+
+        # Remove cart velocity to turn into POMDP
+        observations = np.delete(observations,1,0)
+        #observations = np.delete(observations,1,0)
 
         # Reward Shaping
-        turn_scores = reward_shaper.reward_short_games(reward, done, turnNum)
+        #won,reward,final_score,final_score_random = reward_shaper.get_reward(done, reward)
 
         timestep += 1
+        cumulative_reward += reward
         #########################
         # Handle agent update   #
         #########################
@@ -183,19 +181,18 @@ for i_episode in range(1, n_episodes+1):
         # Set inverse of done for is_terminals (prevents need to inverse later)
         inv_done = 1 if done == 0 else 0
 
-        for i in range(7):
-            players[0].memory.next_states.append(torch.from_numpy(observations[0]).float())
-            players[0].memory.rewards.append(turn_scores)
-            players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
+        players[0].memory.next_states.append(torch.from_numpy(observations).float())
+        players[0].memory.rewards.append(reward)
+        players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
 
-        # Updates agent after 150 * Number of games timesteps
         if timestep % UPDATE_TIMESTEP == 0:
             players[0].optimize_model()
             players[0].memory.clear_memory()
             timestep = 0
-
-            # Reset the hidden states
+            episodes_to_update = 0
+            # Reset the hidden states using an updated
             hidden = torch.zeros(N_LATENT_VAR).unsqueeze(0).unsqueeze(0)
+
         #########################
 
         current_eps = timestep
@@ -203,30 +200,21 @@ for i_episode in range(1, n_episodes+1):
         current_actor_loss = players[0].actor_loss
         current_critic_loss = players[0].critic_loss
         current_temp = players[0].temperature
-        entropy = players[0].dist_entropy
 
-        # Increment the turnNum
-        turnNum += 1
+        if not done:
+            score += 1
 
         #pdb.set_trace()
     #####################
     #   End Game Loop   #
     #####################
-
-    ### Updated win calculator to reflect new reward system
-    if(reward[0] > reward[1]):
-        score += 1
-        short_term_wr[(i_episode-1)%k] = 1
-    elif(reward[0] == reward[1]):
-        ties += 1
-    else:
-        losses += 1
-    ###
+    episodes_to_update += 1
 
     #############################################
     # Update Score statistics for final chart   #
     #############################################
-    scores.append(score / i_episode) ## save the most recent score
+    scores.append(score) ## save the most recent score
+    short_term_wr[(i_episode-1)%k] = score
     current_wr = score / i_episode
     epsilonVals.append(current_eps)
     lossVals.append(current_loss)
@@ -238,14 +226,30 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.4f}\tWins: {} Losses: {} Ties: {} Steps until Update: {} Loss: {:.4f} Actor Loss: {:.4f} Critic Loss: {:.4f} Entropy: {:.4f}\n'.format(i_episode,current_wr,score,losses,ties,(UPDATE_TIMESTEP - current_eps),current_loss,current_actor_loss,current_critic_loss,entropy), end="")
+    print('\rEpisode: {}\tScore: {:.2f} Final Reward: {:.2f} Epsilon: {:.2f} Temperature: {:.2f}  Loss: {:.4f} Actor Loss: {:.4f} Critic Loss: {:.4f} Inv_Loss: {:.2f} Fwd_Loss: {:.2f}\n'.format(i_episode,score,cumulative_reward,current_eps,current_temp,current_loss,current_actor_loss,current_critic_loss,players[0].inv_loss, players[0].forward_loss), end="")
     if i_episode % k == 0:
-        print('\rEpisode {}\tAverage Score {:.4f}'.format(i_episode,np.mean(short_term_wr)))
+        print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
 
         # Handle reward updates
-        reward_shaper.update_rewards(i_episode)
+        #reward_shaper.update_rewards(i_episode)
+
+        # Update reward decay values
+        # First iterate and decrease all decay values by 0.5
+        new_requirement = 0
+        new_decay = -100
+        for required_reward in loss_reward_decay.keys():
+            if loss_reward_decay.get(required_reward) > new_decay:
+                new_decay = loss_reward_decay.get(required_reward)
+
+            loss_reward_decay[required_reward] -= 0.5
+
+            if required_reward > new_requirement:
+                new_requirement = required_reward
+        # Add new loss_reward_decay for next final_requirement
+        new_requirement += 50
+        loss_reward_decay[new_requirement] = -0.5
     ################################
     env.close()
     #########################

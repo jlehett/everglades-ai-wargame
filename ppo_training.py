@@ -16,15 +16,9 @@ from agents.PPO1.PPOAgent import PPOAgent
 
 # Import agent to train against
 sys.path.append(os.path.abspath('../'))
-from agents.State_Machine.random_actions import random_actions
+from agents.State_Machine.random_actions_delay import random_actions_delay
 
 from RewardShaping import RewardShaping
-
-#from everglades-server import generate_map
-
-## Input Variables
-# Agent files must include a class of the same name with a 'get_action' function
-# Do not include './' in file path
 
 #############################
 # Environment Config Setup  #
@@ -47,30 +41,31 @@ names = {}
 #####################
 #   PPO Constants   #
 #####################
-N_LATENT_VAR = 128
-LR = 0.0001
-K_EPOCHS = 10
-GAMMA = 0.99
-BETAS = (0.9,0.999)
-EPS_CLIP = 0.2
+N_LATENT_VAR = 128 # Number of nodes in hidden layers
+LR = 0.001 
+K_EPOCHS = 4 # Number of PPO epochs
+GAMMA = 0.99 # For Advantage estimation
+BETAS = (0.9,0.999) # For Adam
+EPS_CLIP = 0.2 # PPO EPS Value
 ACTION_DIM = 132
 OBSERVATION_DIM = 105
-NUM_GAMES_TILL_UPDATE = 10
-UPDATE_TIMESTEP = 150 * NUM_GAMES_TILL_UPDATE
-INTR_REWARD_STRENGTH = 0.8
-ICM_BATCH_SIZE = 500
-TARGET_KL = 0.01
-LAMBD = 0.95
-USE_ICM = True
+NUM_GAMES_TILL_UPDATE = 10 # NOT CURRENTLY BEING UTILIZED, MAY USE LATER
+UPDATE_TIMESTEP = 2000 # Time until PPO update
+INTR_REWARD_STRENGTH = 0.8 # For ICM reward strength
+ICM_BATCH_SIZE = 500 # For ICM Update
+TARGET_KL = 0.01 # For KL Divergence Early Stopping
+LAMBD = 0.95 # For Generalized Advantage Estimation
+USE_ICM = False # True uses ICM
+BULK_UPDATE = False # True uses bulk update (updating with the 7 actions put together in memory as opposed to separately)
 #################
 
 #################
 # Setup agents  #
 #################
-players[0] = PPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP, 
-                        INTR_REWARD_STRENGTH, ICM_BATCH_SIZE, TARGET_KL, LAMBD, USE_ICM)
+players[0] = PPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP,
+                        INTR_REWARD_STRENGTH, ICM_BATCH_SIZE, TARGET_KL, LAMBD, USE_ICM, BULK_UPDATE)
 names[0] = 'PPO Agent'
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
 
@@ -83,8 +78,6 @@ reward_shaper = RewardShaping()
 
 actions = {}
 
-## Set high episode to test convergence
-# Change back to resonable setting for other testing
 n_episodes = 1000
 timestep = 0
 
@@ -92,7 +85,7 @@ timestep = 0
 # Statistic variables   #
 #########################
 scores = []
-k = 50#NUM_GAMES_TILL_UPDATE
+k = 50 # Only has an affect on the average win rate graph
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
@@ -124,27 +117,20 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
-    players[1].reset()
-
     while not done:
         if i_episode % 25 == 0:
             env.render()
-
-        ### Removed to save processing power
-        # Print statements were taking forever
-        #if debug:
-        #    env.game.debug_state()
-        ###
 
         # Get actions for each player
         for pid in players:
             actions[pid] = players[pid].get_action( observations[pid] )
 
         # Update env
+        turn_scores,_ = env.game.game_turn(actions) # Gets the score from the server
         observations, reward, done, info = env.step(actions)
 
         # Reward Shaping
-        won,reward,final_score,final_score_random = reward_shaper.get_reward(done, reward)
+        won,turn_scores,final_score,final_score_random = reward_shaper.get_reward(done, turn_scores)
 
         timestep += 1
         #########################
@@ -157,9 +143,14 @@ for i_episode in range(1, n_episodes+1):
         # Set inverse of done for is_terminals (prevents need to inverse later)
         inv_done = 1 if done == 0 else 0
 
-        for i in range(7):
+        if not BULK_UPDATE:
+            for i in range(7):
+                players[0].memory.next_states.append(torch.from_numpy(observations[0]).float())
+                players[0].memory.rewards.append(turn_scores[0])
+                players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
+        else:
             players[0].memory.next_states.append(torch.from_numpy(observations[0]).float())
-            players[0].memory.rewards.append(reward[0])
+            players[0].memory.rewards.append(turn_scores[0])
             players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
 
         # Updates agent after 150 * Number of games timesteps

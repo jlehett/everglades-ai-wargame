@@ -5,8 +5,6 @@ import pdb
 
 # Specialized imports
 import numpy as np
-#import gym
-#import gym_everglades
 
 NODE_CONNECTIONS = {
     1: [2, 4],
@@ -32,12 +30,14 @@ ENV_MAP = {
     'everglades-vision-stoch': 'EvergladesVisionStochastic-v0',
 }
 
-class bull_rush:
+class same_commands:
     def __init__(self, action_space, player_num):
         self.action_space = action_space
         self.num_groups = NUM_GROUPS
 
+        self.num_nodes = len(NODE_CONNECTIONS)
         self.num_actions = action_space
+
         self.shape = (self.num_actions, 2)
 
         self.first_turn = True
@@ -45,18 +45,8 @@ class bull_rush:
         self.player_num = player_num
         #print('player_num: {}'.format(player_num))
 
-        # Types:
-        #   0 - Controller
-        #   1 - Striker
-        #   2 - Tank
-        
-        self.grouplen = NUM_GROUPS
-        self.nodelen = len(NODE_CONNECTIONS)
-        self.group_num = 1
-        self.node_num = 2
+        self.groups = []
 
-        self.node_strat = [2,5,8,11]
-        self.strat_index = 0
     # end __init__
 
     def get_action(self, obs):
@@ -71,25 +61,18 @@ class bull_rush:
         # The next line should really be 0, but there is an env bug that the agent doesn't get
         # to see the 0th observation to make it's first move; one turn gets blown
         if not self.first_turn:
-            if self.strat_index == 8:
-                self.strat_index = 0
-            action = self.act_bull_rush(action)
+            action = self.act_test_turn(action)
         else:
+            action = self.act_test_turn(action)
             self.first_turn = False
         #print(action)
-
-        #action[:,0] = [0,1,2,3,4,5,6]
-        #action[:,1] = [2,2,2,2,2,2,2]
+        
         return action
     # end get_action
 
-    def act_bull_rush(self,actions=np.zeros((7,2))):
-        for i in range(0,7):
-            index = self.strat_index // 2
-            actions[i] = [self.group_num, self.node_strat[index]]
-            #self.group_num = ((self.group_num-1) + 1) % self.grouplen + 1
-            self.group_num = (self.group_num + 1) % self.grouplen 
-        self.strat_index += 1
+    def act_test_turn(self,actions):
+        for i in range(1,8):
+            actions[i-1] = [i, i]
         return actions
 
 # end class

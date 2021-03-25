@@ -30,7 +30,8 @@ class PPOAgent:
         icm_batch_size,
         target_kl,
         lambd,
-        use_icm
+        use_icm,
+        bulk_update
     ):
         self.lr = lr
         self.betas = betas
@@ -39,15 +40,16 @@ class PPOAgent:
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
         self.intr_reward_strength = intr_reward_strength
+        self.bulk_update = bulk_update
 
         self.memory = Memory()
 
         # Setup policy
-        self.policy = ActorCritic(state_dim, action_dim, n_latent_var).to(device)
+        self.policy = ActorCritic(state_dim, action_dim, n_latent_var, self.bulk_update).to(device)
         # Do not use RMSProp (learned that the hard way). Adam is the optimizer to use for PPO
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
-        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var).to(device)
+        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, self.bulk_update).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
         self.shape = (7, 2)
         self.loss = 0
 
@@ -87,7 +89,6 @@ class PPOAgent:
         # Monte Carlo estimate of state rewards:
         rewards = []
         discounted_reward = 0
-        gae = 0
 
         # convert list to tensor
         old_states = torch.stack(self.memory.states).to(device).detach()
@@ -97,31 +98,16 @@ class PPOAgent:
         mask = torch.stack(self.memory.is_terminals).to(device).detach()
         reward = torch.from_numpy(np.asarray(self.memory.rewards)).to(device).detach()
 
-        # Get the intrinsic reward
-        with torch.no_grad():
-            intr_reward, self.inv_loss,self.forward_loss = self.icm(old_actions, old_states, next_states, mask)
-        intr_rewards = torch.clamp(self.intr_reward_strength * intr_reward, 0, 1)
-
-        if not self.use_icm:
-            intr_rewards *= 0
-
-        _,values,_ = self.policy.evaluate(old_states, old_actions, self.temperature)
-        # Calculate the GAE
+        # Calculate the Advantage
         for i in reversed(range(len(self.memory.rewards))):
-            mask_i = 0 if mask[i] > 0 else 1
-            delta = (reward[i] + intr_rewards[i]) + (self.gamma * values[i-1] * mask_i) - values[i]
-            gae = delta + (self.gamma * self.lambd * mask_i * gae)
-            #discounted_reward = (reward + intr_reward) + (self.gamma * discounted_reward)
-            rewards.insert(0, gae + values[i])
+            if mask[i] < 1: # mask[i] is equal to 1 on non game ending turns, 0 otherwise. Therefore, discounted reward on game ending turns is 0
+                discounted_reward = 0
+            discounted_reward = (reward[i]) + (self.gamma * discounted_reward)
+            rewards.insert(0, discounted_reward)
 
-        rewards = torch.stack(rewards)
-        rewards = rewards - values
-        # Normalizing the rewards:
-        #rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
-        rewards = rewards.detach()
 
-        batch_idx = np.arange(len(old_states))
         stop_early = False
         # Optimize policy for K epochs:
         for k in range(self.K_epochs):
@@ -133,42 +119,47 @@ class PPOAgent:
                 print('Stopping on epoch {} due to reach max kl'.format(k))
                 stop_early = True
 
-            np.random.shuffle(batch_idx)
-            # Run on minibatches
-            for j in range(len(self.memory.rewards) // self.icm_batch_size):
-                sample_idx = batch_idx[self.icm_batch_size * j:self.icm_batch_size * (j + 1)]
-                # Evaluating old actions and values:
-                logprobs, state_values, dist_entropy = self.policy.evaluate(old_states[sample_idx], old_actions[sample_idx], self.temperature)
+            # Evaluating old actions and values:
+            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions, self.temperature)
 
-                # Finding the ratio (pi_theta / pi_theta_old):
-                ratios = torch.exp(logprobs - old_logprobs[sample_idx].detach())
+            # Finding the ratio (pi_theta / pi_theta_old):
+            ratios = torch.exp(logprobs - old_logprobs.detach())
 
-                # Finding surrogate loss:
-                advantages = rewards #- state_values.detach()
-                surr1 = ratios * advantages[sample_idx]
-                surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages[sample_idx]
-                # Original from github branch did not use torch.mean() which left the loss as a tensor when it finished.
-                # Found another implementation that uses torch.mean() which has fixed the loss and improved the network
-                actor_loss = torch.mean(torch.min(surr1, surr2))
-                critic_loss = 0.5*self.MSE(state_values, rewards[sample_idx])
-                entropy = 0.01*torch.mean(dist_entropy)
-                loss = -actor_loss + critic_loss - entropy
+            # Finding surrogate loss:
+            advantages = rewards - state_values.detach()
 
-                # take gradient step
-                self.optimizer.zero_grad()
-                loss.mean().backward()
-                self.optimizer.step()
-                self.loss = loss
+            if self.bulk_update: # Repeat the advantages to get the tensor in correct shape
+                advantages.unsqueeze(-1).repeat(1,7)
 
-                k_epochs = k
+            surr1 = ratios * advantages # Surrogate 1
+            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages # Surrogate 2
+            actor_loss = -torch.min(surr1, surr2)
+            critic_loss = 0.5*self.MSE(state_values, rewards.float())
+            entropy = 0.01*dist_entropy
+
+            if self.bulk_update: # Repeat entropy to get the tensor in correct shape
+                entropy.unsqueeze(-1).repeat(1,7)
+
+            loss = actor_loss + critic_loss - entropy
+
+            # take gradient step
+            self.optimizer.zero_grad()
+            loss = loss.mean()
+            loss.backward()
+            self.optimizer.step()
+            self.loss = loss
+            self.loss = self.loss.detach()
+
+            k_epochs = k
             if stop_early:
                 break
+        
+        # Copy new weights into old policy:
+        self.policy_old.load_state_dict(self.policy.state_dict())
         
         if self.use_icm:
             self._icm_update(old_states, next_states, old_actions, mask, k_epochs)
 
-        # Copy new weights into old policy:
-        self.policy_old.load_state_dict(self.policy.state_dict())
 
     def _icm_update(self, curr_states, next_states, actions, mask, k_epochs):
         if self.icm_batch_size > curr_states.size(0):
@@ -223,10 +214,11 @@ class Memory:
 #   Actor Critic Class   #
 ##########################
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, n_latent_var):
+    def __init__(self, state_dim, action_dim, n_latent_var, bulk_update):
         super(ActorCritic, self).__init__()
         self.num_layers = 2
         self.n_latent_var = n_latent_var
+        self.bulk_update = bulk_update
         # actor
         self.action_layer = nn.Sequential(
             nn.Linear(state_dim, n_latent_var),
@@ -257,16 +249,19 @@ class ActorCritic(nn.Module):
         # Uses Boltzmann style exploration by sampling from distribution
         dist = Categorical(action_probs / temperature)
 
-        # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
-        # Enables us to grab non-duplicate actions faster
-        action_indices = torch.multinomial(action_probs / temperature,7,replacement=False)
+        action_indices = dist.sample((7,))
 
-        # Append each action along with its log_prob and the current state separately
-        # Makes the loss function more manageable
-        for i in range(7):
-            memory.logprobs.append(dist.log_prob(action_indices[i]))
+        if not self.bulk_update:
+            for i in range(7):
+                memory.logprobs.append(dist.log_prob(action_indices[i]))
+                memory.states.append(state)
+                memory.actions.append(action_indices[i])
+        else:
+            # Append each action along with its log_prob and the current state separately
+            # Makes the loss function more manageable
+            memory.logprobs.append(dist.log_prob(action_indices))
             memory.states.append(state)
-            memory.actions.append(action_indices[i])
+            memory.actions.append(action_indices)
 
         return action_indices
 
@@ -277,7 +272,16 @@ class ActorCritic(nn.Module):
         dist = Categorical(action_probs / temperature)
 
         # Calculate the expected log_probs for the previous actions
-        action_logprobs = dist.log_prob(action)
+        if self.bulk_update:
+            probs = []
+            probs.append(dist.log_prob(action[:,0]))
+            for a in range(1,action.size(1)):
+                probs.append(dist.log_prob(action[:,a]))
+
+            action_logprobs = torch.stack(probs)
+            action_logprobs = torch.reshape(action_logprobs, (action_probs.size(0), 7))
+        else:
+            action_logprobs = dist.log_prob(action)
 
         # Calculate the entropy from the distribution
         dist_entropy = dist.entropy()

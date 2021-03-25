@@ -40,27 +40,13 @@ class EvergladesEnv(gym.Env):
         if status != 0:
             done = 1
             if scores[0] != scores[1]:
-                ### Boosted win score to compensate for new reward system
                 reward[0] = 1 if scores[0] > scores[1] else 0
-                ###
 
                 reward[1] = 1 if scores[1] > scores[0] else -1
             # else reward is 0 for a tie
             #print(scores)
         # end status done check
         #print(status)
-        else:
-            ### Use the score calculated in server.game_end (used for non game ending rounds as well)
-            # Score is calculated from number of nodes held for a given amount of time
-            # Scores range from 0- ~3000 points
-            # Used in new reward system for calculating the reward if the agent wins
-            reward[0] = scores[0]
-            reward[1] = scores[1]
-            ######################################################
-
-            # Percent Difference Reward
-            #reward[0] = (scores[0]-scores[1]) / ((scores[0] + scores[1]) / 2)
-            #reward[1] = (scores[1]-scores[0]) / ((scores[0] + scores[1]) / 2)
 
         # return state, reward, done, info
         return observations, reward, done, {}

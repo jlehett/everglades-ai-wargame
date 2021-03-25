@@ -13,7 +13,7 @@ class RewardShaping():
             self.final_score_opponent = reward[1]
 
             # Set reward for non-game ending turns
-            reward[0] = 0
+            reward[0] = (reward[0] - reward[1]) / reward[0]
         elif reward[0] < reward[1]: # Agent lost
             # Calculate the normalized score
             reward_sub = (self.final_score_agent - self.final_score_opponent) / self.reward_divider
@@ -30,7 +30,7 @@ class RewardShaping():
             if not found_less:
                 reward[0] = 0.8
             
-            reward[0] = 0 # Override to test on basic reward system (0 for loss 1 for win)
+            reward[0] = -1 # Override to test on basic reward system (0 for loss 1 for win)
         else: # Agent won
             # Set agent win condition
             won = True
@@ -39,6 +39,18 @@ class RewardShaping():
             reward[0] = 1
 
         return won, reward, self.final_score_agent, self.final_score_opponent
+
+    def reward_short_games(self, reward_array, done, turnNum):
+        """
+        Similar to penalize_long_games, but instead provides larger rewards for
+        finishing earlier.
+        """
+        if done:
+            if reward_array[0] > reward_array[1]:
+                return (150.0 - turnNum) / 150.0
+            else:
+                return -1.0
+        return 0.0
 
     def update_rewards(self, i_episode):
         # Stop updating after 1000 episodes
