@@ -4,7 +4,11 @@ from gym.utils import seeding
 from gym.spaces import Tuple, Discrete, Box
 
 import everglades_server.server as server
-from gym_everglades.envs.everglades_renderer import EvergladesRenderer
+
+try:
+    #from gym_everglades.envs.everglades_renderer import EvergladesRenderer
+except:
+    pass
 
 import numpy as np
 import pdb
@@ -108,7 +112,10 @@ class EvergladesEnv(gym.Env):
         # Initialize players with selected groups
         self.game.game_init(self.player_dat)
 
-        self.renderer = EvergladesRenderer(self.game)
+        try:
+            self.renderer = EvergladesRenderer(self.game)
+        except:
+            pass
 
         # Get first game state
         observations = self._build_observations()

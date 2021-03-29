@@ -63,6 +63,7 @@ class A2C():
        
         # Normalizing the rewards:
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        print(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
@@ -141,7 +142,7 @@ class ActorCritic(nn.Module):
         raise NotImplementedError
 
     def act(self, state, memory):
-        state = torch.from_numpy(state).float()
+        state = torch.from_numpy(state).float().to(device)
         action_probs = self.actor(state)
 
         # Uses Boltzmann style exploration by sampling from distribution
@@ -149,7 +150,7 @@ class ActorCritic(nn.Module):
         
         # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
         # Enables us to grab non-duplicate actions faster
-        action_indices = torch.multinomial(action_probs,7,replacement=False)
+        action_indices = torch.multinomial(action_probs,7,replacement=False).to(device)
 
         for i in range(7):
             memory.logprobs.append(dist.log_prob(action_indices[i]))
@@ -173,4 +174,4 @@ class ActorCritic(nn.Module):
         # Get expected network output
         state_value = self.critic(state)
 
-        return action_logprobs, torch.squeeze(state_value), dist_entropy
+        return action_logprobs, torch.squeeze(state_value).to(device), dist_entropy
