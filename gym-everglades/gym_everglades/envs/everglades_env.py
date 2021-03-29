@@ -6,7 +6,7 @@ from gym.spaces import Tuple, Discrete, Box
 import everglades_server.server as server
 
 try:
-    #from gym_everglades.envs.everglades_renderer import EvergladesRenderer
+    from gym_everglades.envs.everglades_renderer import EvergladesRenderer
 except:
     pass
 
