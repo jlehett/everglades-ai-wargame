@@ -178,7 +178,10 @@ for i_episode in range(1, n_episodes+1):
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)   
     ################################
-    env.close()
+    try:
+        env.close()
+    except:
+        pass
     #########################
     #   End Training Loop   #
     #########################
