@@ -35,15 +35,15 @@ class A2C():
         self.optimizer = optim.Adam(self.model.parameters())
 
     def get_action(self, obs):
-        action = np.zeros(self.shape).cpu()
-        chosen_indices = self.model.act(obs, self.memory)
+        action = np.zeros(self.shape)
+        chosen_indices = self.model.act(obs, self.memory).cpu()
   
         # Unwravel action indices to output to the env
         chosen_units = chosen_indices // 12
         chosen_nodes = chosen_indices % 11
 
-        action[:,0] = chosen_units
-        action[:,1] = chosen_nodes
+        action[:,0] = chosen_units.cpu()
+        action[:,1] = chosen_nodes.cpu()
 
         #log_prob = self.model.evaluate(obs, action)
         #print(action)
