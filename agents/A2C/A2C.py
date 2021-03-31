@@ -36,7 +36,7 @@ class A2C():
 
     def get_action(self, obs):
         action = np.zeros(self.shape)
-        chosen_indices = self.model.act(obs, self.memory).cpu()
+        chosen_indices = self.model.act(obs, self.memory)
   
         # Unwravel action indices to output to the env
         chosen_units = chosen_indices // 12
