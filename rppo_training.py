@@ -36,12 +36,6 @@ from agents.State_Machine.same_commands_2 import same_commands_2
 from agents.State_Machine.same_commands import same_commands
 from agents.State_Machine.swarm_agent import SwarmAgent
 
-#from everglades-server import generate_map
-
-## Input Variables
-# Agent files must include a class of the same name with a 'get_action' function
-# Do not include './' in file path
-
 #############################
 # Environment Config Setup  #
 #############################
@@ -65,26 +59,21 @@ names = {}
 #####################
 N_LATENT_VAR = 248
 LR = 0.0001
-K_EPOCHS = 4
+K_EPOCHS = 8
 GAMMA = 0.99
 BETAS = (0.9,0.999)
 EPS_CLIP = 0.2
 ACTION_DIM = 132
 OBSERVATION_DIM = 105
-NUM_GAMES_TILL_UPDATE = 5
-UPDATE_TIMESTEP = 1000
-INTR_REWARD_STRENGTH = 0.9
-ICM_BATCH_SIZE = 150
-TARGET_KL = 0.01
+UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
-USE_ICM = False
+DEVICE = "GPU"
 #################
 
 #################
 # Setup agents  #
 #################
-players[0] = RPPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP, 
-                        INTR_REWARD_STRENGTH, ICM_BATCH_SIZE, TARGET_KL, LAMBD, USE_ICM)
+players[0] = RPPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP, LAMBD, DEVICE)
 names[0] = 'RPPO Agent'
 hidden = torch.zeros(N_LATENT_VAR).unsqueeze(0).unsqueeze(0)
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
@@ -109,7 +98,7 @@ timestep = 0
 # Statistic variables   #
 #########################
 scores = []
-k = 50#NUM_GAMES_TILL_UPDATE
+k = 50
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
@@ -124,8 +113,6 @@ actorLossVals = []
 current_critic_loss = 0
 criticLossVals = []
 entropy = 0
-current_temp = 0
-tempVals = []
 #########################
 
 #####################
@@ -147,21 +134,11 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
-    #players[1].reset()
     turnNum = 0
     while not done:
         if i_episode % 25 == 0:
             env.render()
 
-        ### Removed to save processing power
-        # Print statements were taking forever
-        #if debug:
-        #    env.game.debug_state()
-        ###
-
-        # Get actions for each player
-        #for pid in players:
-        #    actions[pid] = players[pid].get_action( observations[pid] )
         actions[1] = players[1].get_action( observations[1] )
         actions[0], hidden = players[0].get_action( observations[0], hidden )
 
@@ -188,7 +165,7 @@ for i_episode in range(1, n_episodes+1):
             players[0].memory.rewards.append(turn_scores)
             players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
 
-        # Updates agent after 150 * Number of games timesteps
+        # Updates agent after UPDATE_TIMESTEP number of steps
         if timestep % UPDATE_TIMESTEP == 0:
             players[0].optimize_model()
             players[0].memory.clear_memory()
@@ -202,7 +179,6 @@ for i_episode in range(1, n_episodes+1):
         current_loss = players[0].loss
         current_actor_loss = players[0].actor_loss
         current_critic_loss = players[0].critic_loss
-        current_temp = players[0].temperature
         entropy = players[0].dist_entropy
 
         # Increment the turnNum
@@ -232,7 +208,6 @@ for i_episode in range(1, n_episodes+1):
     lossVals.append(current_loss)
     actorLossVals.append(current_actor_loss)
     criticLossVals.append(current_critic_loss)
-    tempVals.append(current_temp)
     #############################################
 
     #################################
@@ -265,10 +240,6 @@ par1 = ax1.twinx()
 par2 = ax2.twinx()
 par3 = ax1.twinx()
 par4 = ax2.twinx()
-par5 = ax3.twinx()
-par6 = ax4.twinx()
-par3.spines["right"].set_position(("axes", 1.1))
-par4.spines["right"].set_position(("axes", 1.1))
 #########################
 
 ######################
@@ -278,23 +249,17 @@ fig.suptitle('Scores')
 ax1.plot(np.arange(1, n_episodes+1),scores)
 ax1.set_ylabel('Cumulative Scores')
 ax1.yaxis.label.set_color('blue')
-par1.plot(np.arange(1,n_episodes+1),tempVals,color="green",alpha=0.5)
-par1.set_ylabel('Temperature')
-par1.yaxis.label.set_color('green')
-par3.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par3.set_ylabel('Loss')
-par3.yaxis.label.set_color('red')
+par1.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+par1.set_ylabel('Loss')
+par1.yaxis.label.set_color('red')
 #######################
 
 ##################################
 #   Average Per K Episodes Plot  #
 ##################################
-par2.plot(np.arange(1,n_episodes+1),tempVals,color="green",alpha=0.5)
-par2.set_ylabel('Temperature')
-par2.yaxis.label.set_color('green')
-par4.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par4.set_ylabel('Loss')
-par4.yaxis.label.set_color('red')
+par2.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+par2.set_ylabel('Loss')
+par2.yaxis.label.set_color('red')
 ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
 ax2.set_ylabel('Average Scores')
 ax2.yaxis.label.set_color('blue')
@@ -304,9 +269,9 @@ ax2.set_xlabel('Episode #')
 ##################################
 #   Actor Loss Plot              #
 ##################################
-par5.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par5.set_ylabel('Loss')
-par5.yaxis.label.set_color('red')
+par3.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+par3.set_ylabel('Loss')
+par3.yaxis.label.set_color('red')
 ax3.plot(np.arange(1, n_episodes+1),actorLossVals)
 ax3.set_ylabel('Actor Loss')
 ax3.yaxis.label.set_color('blue')
@@ -316,9 +281,9 @@ ax3.set_xlabel('Episode #')
 ##################################
 #   Critic Loss Plot             #
 ##################################
-par6.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par6.set_ylabel('Loss')
-par6.yaxis.label.set_color('red')
+par4.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+par4.set_ylabel('Loss')
+par4.yaxis.label.set_color('red')
 ax4.plot(np.arange(1, n_episodes+1),criticLossVals)
 ax4.set_ylabel('Critic Loss')
 ax4.yaxis.label.set_color('blue')

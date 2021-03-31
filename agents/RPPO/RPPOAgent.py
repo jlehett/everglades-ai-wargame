@@ -3,17 +3,13 @@ import torch.nn as nn
 import numpy as np
 from torch.distributions import Categorical
 import gym
-from agents.RPPO.IntrinsicCuriosity import ICM
 
+global device 
 device = torch.device('cpu')
 
 #######################
 #   PPO Agent Class   #
 #######################
-
-TEMP_START = 1
-TEMP_END = 1.0
-TEMP_DECAY = 0.00005
 
 class RPPOAgent:
     def __init__(
@@ -26,19 +22,21 @@ class RPPOAgent:
         gamma,
         K_epochs, 
         eps_clip,
-        intr_reward_strength,
-        icm_batch_size,
-        target_kl,
         lambd,
-        use_icm
+        DEVICE
     ):
+        # Enables GPU Training
+        global device
+        if DEVICE == 'GPU':
+            device = torch.device('cuda')
+
+
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
         self.lambd = lambd
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
-        self.intr_reward_strength = intr_reward_strength
         self.n_latent_var = n_latent_var
 
         self.memory = Memory()
@@ -55,42 +53,25 @@ class RPPOAgent:
         self.critic_loss = 0
         self.dist_entropy = 0
 
-        self.icm = ICM(state_dim, action_dim, n_latent_var).to(device)
-        self.optimizer_icm = torch.optim.Adam(self.icm.parameters(), lr=lr, betas=betas)
-        self.inv_loss = 0
-        self.forward_loss = 0
-        self.icm_batch_size = icm_batch_size
-        self.use_icm = use_icm
-
-        self.temperature = 0
-        self.steps_done = 0
-
-        self.target_kl = target_kl
-
         # Set the loss function
         # Only use MSELoss for PPO
         self.MSE = nn.MSELoss()
 
     def get_action(self, observation, hidden):
-
-        self.temperature = TEMP_END + (TEMP_START - TEMP_END) * np.exp(self.steps_done * -TEMP_DECAY)
-        self.steps_done += 1
-
         action = np.zeros(self.shape)
-        chosen_indices, hidden = self.policy_old.act(observation,self.memory, self.temperature, hidden)
+        chosen_indices, hidden = self.policy_old.act(observation,self.memory, hidden)
 
         # Unwravel action indices to output to the env
         chosen_units = chosen_indices // 12
         chosen_nodes = chosen_indices % 11
 
-        action[:,0] = chosen_units
-        action[:,1] = chosen_nodes
+        action[:,0] = chosen_units.cpu()
+        action[:,1] = chosen_nodes.cpu()
         return action, hidden
 
     def optimize_model(self):
         # Monte Carlo estimate of state rewards:
         rewards = []
-        discounted_reward = 0
         gae = 0
 
         # convert list to tensor
@@ -100,25 +81,15 @@ class RPPOAgent:
         old_logprobs = torch.stack(self.memory.logprobs).to(device).detach()
         mask = torch.stack(self.memory.is_terminals).to(device).detach()
         reward = torch.from_numpy(np.asarray(self.memory.rewards)).to(device).detach()
-
-        # Get the intrinsic reward
-        with torch.no_grad():
-            intr_reward, self.inv_loss,self.forward_loss = self.icm(old_actions, old_states, next_states, mask)
-        intr_rewards = torch.clamp(self.intr_reward_strength * intr_reward, 0, 1)
         
-        hidden = torch.zeros(old_states.size(0),self.n_latent_var).unsqueeze(0)
-        _,values,_ = self.policy.evaluate(old_states, old_actions, self.temperature, hidden)
+        hidden = torch.zeros(old_states.size(0),self.n_latent_var).unsqueeze(0).to(device)
+
+        _,values,_ = self.policy.evaluate(old_states, old_actions, hidden)
         values = values.detach()
         last_value = values[len(values) - 1]
+
         # Calculate the Advantage
         for i in reversed(range(len(self.memory.rewards))):
-           ### Markovian Discounted Rewards ###
-            #if mask[i] < 1:
-            #    discounted_reward = 0
-            #discounted_reward = (reward[i]) + (self.gamma * discounted_reward)
-            #rewards.insert(0,discounted_reward)
-            ### End Markovian Discounted Rewards ###
-
             ### Generalized Advantage Estimation ###
             delta = (reward[i]) + (self.gamma * last_value * mask[i]) - values[i]
             gae = delta + (self.gamma * self.lambd * mask[i] * gae)
@@ -127,7 +98,6 @@ class RPPOAgent:
             ### End Generalized Advantage Estimation ###
 
         # Normalizing the rewards:
-        #rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device) - values[:]
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
@@ -135,21 +105,14 @@ class RPPOAgent:
         # Optimize policy for K epochs:
         for k in range(self.K_epochs):
 
-            # For kl divergence early stopping
-            #logprobs, _, _ = self.policy.evaluate(old_states, old_actions, self.temperature, hidden)
-            #approx_kl = (old_logprobs - logprobs).mean().item()
-            #if approx_kl > 1.5 * self.target_kl and not stop_early:
-            #    print('Stopping on epoch {} due to reach max kl'.format(k))
-            #    stop_early = True
-
             # Evaluating old actions and values:
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions, self.temperature, hidden)
+            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions, hidden)
 
             # Finding the ratio (pi_theta / pi_theta_old):
             ratios = torch.exp(logprobs - old_logprobs.detach())
 
             # Finding surrogate loss:
-            advantages = rewards #- state_values.detach()
+            advantages = rewards
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
@@ -171,40 +134,9 @@ class RPPOAgent:
             k_epochs = k
             if stop_early:
                 break
-        
-        if self.use_icm:
-            self._icm_update(old_states, next_states, old_actions, mask, k_epochs)
 
         # Copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
-
-    def _icm_update(self, curr_states, next_states, actions, mask, k_epochs):
-        if self.icm_batch_size > curr_states.size(0):
-            pass
-
-        epoch_forw_loss = 0
-        epoch_inv_loss = 0
-        for _ in range(k_epochs):
-            indexes = np.random.permutation(actions.size(0))
-            for i in range(0, len(indexes), self.icm_batch_size):
-                batch_ind = indexes[i:i + self.icm_batch_size]
-                batch_curr_states = curr_states[batch_ind, :]
-                batch_next_states = next_states[batch_ind, :]
-                batch_actions = actions[batch_ind]
-                batch_mask = mask[batch_ind]
-
-                _, inv_loss, forw_loss = self.icm(batch_actions,
-                                                  batch_curr_states,
-                                                  batch_next_states,
-                                                  batch_mask)
-                epoch_forw_loss += forw_loss.item()
-                epoch_inv_loss += inv_loss.item()
-                unclip_intr_loss = 10 * (0.2 * forw_loss + 0.8 * inv_loss)
-
-                # take gradient step
-                self.optimizer_icm.zero_grad()
-                unclip_intr_loss.backward()
-                self.optimizer_icm.step()
 
 ####################
 #   Memory Class   #
@@ -268,19 +200,20 @@ class ActorCritic(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def act(self, state, memory, temperature, hidden):
+    def act(self, state, memory, hidden):
         state = torch.from_numpy(state).float().to(device)
+        hidden = hidden.to(device)
         action_probs = self.action_head(state)
         action_probs = action_probs.unsqueeze(0).unsqueeze(0)
         action_probs,hidden = self.action_gru(action_probs, hidden)
         action_probs = self.action_layer(action_probs)
 
         # Uses Boltzmann style exploration by sampling from distribution
-        dist = Categorical(action_probs[0][0] / temperature)
+        dist = Categorical(action_probs[0][0])
 
         # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
         # Enables us to grab non-duplicate actions faster
-        action_indices = torch.multinomial(action_probs[0][0] / temperature,7,replacement=False)
+        action_indices = torch.multinomial(action_probs[0][0],7,replacement=False)
 
         # Append each action along with its log_prob and the current state separately
         # Makes the loss function more manageable
@@ -291,14 +224,14 @@ class ActorCritic(nn.Module):
 
         return action_indices, hidden
 
-    def evaluate(self, state, action, temperature, hidden):
+    def evaluate(self, state, action, hidden):
         action_probs = self.action_head(state)
         action_probs = action_probs.unsqueeze(0)
         action_probs,hidden = self.action_gru(action_probs, hidden)
         action_probs = self.action_layer(action_probs)
 
         # Use same distribution as act
-        dist = Categorical(action_probs[0] / temperature)
+        dist = Categorical(action_probs[0])
 
         # Calculate the expected log_probs for the previous actions
         action_logprobs = dist.log_prob(action)
@@ -313,12 +246,3 @@ class ActorCritic(nn.Module):
         state_value = self.value_layer(state_value)
 
         return action_logprobs, torch.squeeze(state_value[0]), dist_entropy
-
-def get_fresh_hidden(self, state, hidden):
-        state = torch.from_numpy(state).float().to(device)
-        action_probs = self.action_head(state)
-        if self.use_gru:
-            action_probs = action_probs.unsqueeze(0).unsqueeze(0)
-            action_probs,hidden = self.action_gru(action_probs, hidden)
-        action_probs = self.action_layer(action_probs)
-        return hidden
