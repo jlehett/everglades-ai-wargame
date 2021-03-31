@@ -35,7 +35,7 @@ class A2C():
         self.optimizer = optim.Adam(self.model.parameters())
 
     def get_action(self, obs):
-        action = np.zeros(self.shape)
+        action = np.zeros(self.shape).cpu()
         chosen_indices = self.model.act(obs, self.memory)
   
         # Unwravel action indices to output to the env
