@@ -11,9 +11,9 @@ import os
 from typing import Deque, Dict, List, Tuple
 from torch.nn.utils import clip_grad_norm_
 
-from agent_attributes.PER import PrioritizedReplayBuffer
-from agent_attributes.Network import Network
-from agent_attributes.ReplayMemory import ReplayBuffer
+from agents.Rainbow.agent_attributes.PER import PrioritizedReplayBuffer
+from agents.Rainbow.agent_attributes.Network import Network
+from agents.Rainbow.agent_attributes.ReplayMemory import ReplayBuffer
 
 TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
 EVALUATE_EPSILON = 0.00 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
@@ -85,10 +85,10 @@ class DQNAgent():
         # Create the NStepModule
         #self.NStepModule = NStepModule(N_STEP, GAMMA, MEMORY_SIZE)
         if N_STEP > 1:
-            self.NStepMemory = ReplayBuffer(observation_space.shape[0], MEMORY_SIZE, BATCH_SIZE, N_STEP, GAMMA)
+            self.NStepMemory = ReplayBuffer(INPUT_SIZE, MEMORY_SIZE, BATCH_SIZE, N_STEP, GAMMA)
 
         # PER memory
-        self.ReplayMemory = PrioritizedReplayBuffer(observation_space.shape[0], MEMORY_SIZE, BATCH_SIZE, ALPHA)
+        self.ReplayMemory = PrioritizedReplayBuffer(INPUT_SIZE, MEMORY_SIZE, BATCH_SIZE, ALPHA)
         self.beta = BETA
         self.prior_eps = PRIOR_EPS
 
@@ -101,16 +101,16 @@ class DQNAgent():
         self.policy_net = Network(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
         self.target_net = Network(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
 
-        # If a save file is specified and the file exists, load the save file
-        if NETWORK_LOAD_NAME and os.path.exists(NETWORK_LOAD_NAME + '.pickle'):
-            save_file = open(NETWORK_LOAD_NAME + '.pickle', 'rb')
-            save_file_data = pickle.load(save_file)
-            self.policy_net.load_state_dict(save_file_data.get('state_dict'))
-            if TRAIN:
-                self.epsilon = save_file_data.get('epsilon')
-                self.previous_episodes = save_file_data.get('episodes')
-            save_file.close()
-            print('Loaded Saved Network:', NETWORK_LOAD_NAME)
+        # # If a save file is specified and the file exists, load the save file
+        # if NETWORK_LOAD_NAME and os.path.exists(NETWORK_LOAD_NAME + '.pickle'):
+        #     save_file = open(NETWORK_LOAD_NAME + '.pickle', 'rb')
+        #     save_file_data = pickle.load(save_file)
+        #     self.policy_net.load_state_dict(save_file_data.get('state_dict'))
+        #     if TRAIN:
+        #         self.epsilon = save_file_data.get('epsilon')
+        #         self.previous_episodes = save_file_data.get('episodes')
+        #     save_file.close()
+        #     print('Loaded Saved Network:', NETWORK_LOAD_NAME)
 
         # Load the policy network's values into the target network
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -196,7 +196,8 @@ class DQNAgent():
         swarm_obs = self.create_swarm_obs(swarm_number, obs, allies_on_node)
         # Find the predicted Q values for the swarm for all 12 possible actions
         with torch.no_grad():
-            swarm_predicted_q = self.policy_net(swarm_obs)
+            observation = torch.from_numpy(swarm_obs).float()
+            swarm_predicted_q = self.policy_net(observation)
         # Find the best predicted node
         best_node = torch.argmax(swarm_predicted_q) + 1
         # Find the best predicted q value
@@ -234,18 +235,13 @@ class DQNAgent():
             per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
             # -- We need to convert previous_state to the per-swarm's previous states --
         
-        # convert next game state
-        per_swarm_next_state = np.zeros((NUM_GROUPS, INPUT_SIZE))
-        # We can compute the number of allies on each node outside of the for loop
-        next_state_allies_on_node = self.get_allies_on_node_data(next_state)
-        for swarm_num in range(NUM_GROUPS):
-            per_swarm_next_state[swarm_num] = self.create_swarm_obs(swarm_num, next_state, next_state_allies_on_node)
-        
+        #print(per_swarm_previous_state.shape)
+        #print(actions.shape)
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
         if N_STEP > 1:
-            self.NStepMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0, per_swarm_next_state, done)
+            self.NStepMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
 
-        self.ReplayMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0, per_swarm_next_state, done)
+        self.ReplayMemory.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
 
     def create_swarm_obs(self, swarm_number, obs, allies_on_node):
         """
@@ -299,10 +295,9 @@ class DQNAgent():
         weights = torch.FloatTensor(
             samples["weights"].reshape(-1, 1)
         ).to(self.device)
-        indices = samples["indices"]
-
+        indices = samples["indices"][np.argmax(weights)]
         # 1-step Learning loss
-        elementwise_loss = self.compute_loss(samples, GAMMA)
+        elementwise_loss = self.compute_loss(samples, GAMMA, indices)
         
         # PER: importance sampling before average
         loss = torch.mean(elementwise_loss * weights)
@@ -313,7 +308,7 @@ class DQNAgent():
         if N_STEP > 1:
             gamma = GAMMA ** N_STEP
             samples = self.NStepMemory.sample_batch_from_idxs(indices)
-            elementwise_loss_n_loss = self.compute_loss(samples, gamma)
+            elementwise_loss_n_loss = self.compute_loss(samples, gamma, indices)
             elementwise_loss += elementwise_loss_n_loss
 
             # PER: importance sampling before average
@@ -335,52 +330,90 @@ class DQNAgent():
 
         return loss.item()
 
-    def compute_loss(self, samples: Dict[str, np.ndarray], gamma: float) -> torch.Tensor:
-        """Return categorical dqn loss."""
-        device = self.device  # for shortening the following lines
-        state = torch.FloatTensor(samples["obs"]).to(device)
-        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
-        action = torch.LongTensor(samples["acts"]).to(device)
-        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
-        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+    def compute_loss(self, samples: Dict[str, np.ndarray], gamma: float, indices) -> torch.Tensor:
+        # """Return categorical dqn loss."""
+        # device = self.device  # for shortening the following lines
+        # state = torch.FloatTensor(samples["obs"]).to(device)
+        # next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+        # action = torch.LongTensor(samples["acts"]).to(device).unsqueeze(1)
+        # reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
+        # done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+        # next_state = state[0, :, :]
         
-        # Categorical DQN algorithm
-        delta_z = float(V_MAX - V_MIN) / (ATOM_SIZE - 1)
+        # # Categorical DQN algorithm
+        # delta_z = float(V_MAX - V_MIN) / (ATOM_SIZE - 1)
 
-        with torch.no_grad():
-            # Double DQN
-            next_action = self.policy_net(next_state).argmax(1)
-            next_dist = self.target_net.dist(next_state)
-            next_dist = next_dist[range(BATCH_SIZE), next_action]
+        # with torch.no_grad():
+        #     # Double DQN
+        #     # next_action = self.policy_net(next_state).gather(1, action)
+        #     next_dist = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
+        #     for i in range(NUM_GROUPS):
+        #         next_dist[0, i, :] = self.target_net(next_state[i, :]).detach()
 
-            t_z = reward + (1 - done) * gamma * self.support
-            t_z = t_z.clamp(min=V_MIN, max=V_MAX)
-            b = (t_z - V_MIN) / delta_z
-            l = b.floor().long()
-            u = b.ceil().long()
+        #     t_z = reward + (1 - done) * gamma * self.support
+        #     t_z = t_z.clamp(min=V_MIN, max=V_MAX)
+        #     b = (t_z - V_MIN) / delta_z
+        #     l = b.floor().long()
+        #     u = b.ceil().long()
 
-            offset = (
-                torch.linspace(
-                    0, (BATCH_SIZE - 1) * ATOM_SIZE, BATCH_SIZE
-                ).long()
-                .unsqueeze(1)
-                .expand(BATCH_SIZE, ATOM_SIZE)
-                .to(self.device)
-            )
+        #     offset = (
+        #         torch.linspace(
+        #             0, (BATCH_SIZE - 1) * ATOM_SIZE, BATCH_SIZE
+        #         ).long()
+        #         .unsqueeze(1)
+        #         .expand(BATCH_SIZE, ATOM_SIZE)
+        #         .to(self.device)
+        #     )
 
-            proj_dist = torch.zeros(next_dist.size(), device=self.device)
-            proj_dist.view(-1).index_add_(
-                0, (l + offset).view(-1), (next_dist * (u.float() - b)).view(-1)
-            )
-            proj_dist.view(-1).index_add_(
-                0, (u + offset).view(-1), (next_dist * (b - l.float())).view(-1)
-            )
+        #     proj_dist = torch.zeros(next_dist.size(), device=self.device)
+        #     print(next_dist.shape)
+        #     proj_dist.view(-1).index_add_(
+        #         0, (l + offset).view(-1), (next_dist * (u.float() - b)).view(-1)
+        #     )
+        #     proj_dist.view(-1).index_add_(
+        #         0, (u + offset).view(-1), (next_dist * (b - l.float())).view(-1)
+        #     )
 
-        dist = self.policy_net.dist(state)
-        log_p = torch.log(dist[range(BATCH_SIZE), action])
-        elementwise_loss = -(proj_dist * log_p).sum(1)
+        # dist = self.policy_net.dist(state).gather(1, action)
+        # log_p = torch.log(dist[range(BATCH_SIZE), action])
+        # elementwise_loss = -(proj_dist * log_p).sum(1)
 
-        return elementwise_loss
+        # return elementwise_loss
+        nth_next_state_swarms_batch = torch.FloatTensor(samples["next_obs"]).to(device)
+        nth_next_state_swarms_batch = nth_next_state_swarms_batch[indices]
+        swarm_state_batch = torch.FloatTensor(samples["obs"]).to(device)
+        print(swarm_state_batch.shape)
+        swarm_state_batch = swarm_state_batch[indices]
+        print(swarm_state_batch.shape)
+        swarm_action_batch = torch.LongTensor(samples["acts"]).to(device).unsqueeze(1)
+        swarm_action_batch = swarm_action_batch[indices]
+        reward_batch = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
+        reward_batch = reward_batch[indices]
+        # Compute a mask of non-final states and concatenate the batch elements
+        non_final_mask = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+        non_final_mask = non_final_mask[indices]
+        non_final_next_state_swarms_batch = nth_next_state_swarms_batch[bool(non_final_mask[0]), :, :]
+        
+        # Compute the swarm's predicted qs for the current state
+        print(swarm_state_batch.shape)
+        print(swarm_action_batch.shape)
+        print(self.policy_net(swarm_state_batch).shape)
+        state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
+
+        # Compute the swarm's future value for next states
+        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
+        for swarm_num in range(NUM_GROUPS):
+            next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
+        # Limit future value to the best q value for each swarm
+        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2)
+        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1)
+        # Compute the estimated future reward
+        estimated_future_reward = (max_next_state_predicted_q_batch * (GAMMA ** N_STEP) + reward_batch).to(device)
+
+        # Compute the loss
+        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
+
+        return loss
 
     def end_of_episode(self, episodes, total_episodes):
         """
@@ -402,7 +435,7 @@ class DQNAgent():
             fraction = min(episodes / total_episodes, 1.0)
             self.beta = self.beta + fraction * (1.0 - self.beta)
 
-    def _target_hard_update(self):
+    def hard_update(self):
         """Hard update: target <- local."""
         self.target_net.load_state_dict(self.policy_net.state_dict())
 

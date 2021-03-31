@@ -10,13 +10,13 @@ from collections import namedtuple
 import pickle
 import os
 
-TRAIN = False # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
+TRAIN = True # If set to true, will use standard training procedure; if set to false, epsilon is ignored and the agent no longer trains
 EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
 TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
 
-NETWORK_SAVE_NAME = 'agents/Minimized/saved_models/CycledPerSwarm' # The name to use in saving the trained agent
-NETWORK_LOAD_NAME = 'agents/Minimized/saved_models/CycledPerSwarm' # The name to use in loading a saved agent
+NETWORK_SAVE_NAME = 'lagents/Minimized/saved_models/CycledPerSwarm' # The name to use in saving the trained agent
+NETWORK_LOAD_NAME = 'lagents/Minimized/saved_models/CycledPerSwarm' # The name to use in loading a saved agent
 #NETWORK_LOAD_NAME = None # The name to use in loading a saved agent
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
@@ -274,6 +274,8 @@ class DQNAgent():
         for swarm_num in range(NUM_GROUPS):
             per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
+        #print(per_swarm_previous_state.shape)
+        #print(actions.shape)
         self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward / 10000.0)
 
     def optimize_model(self):
@@ -299,6 +301,10 @@ class DQNAgent():
         # Compute a mask of non-final states and concatenate the batch elements
         non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone))
         non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :]
+
+        #print(swarm_state_batch.shape)
+        #print(swarm_action_batch.shape)
+        #print(self.policy_net(swarm_state_batch).shape)
 
         # Compute the swarm's predicted qs for the current state
         state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)

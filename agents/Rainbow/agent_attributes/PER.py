@@ -11,8 +11,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
        
-from agent_attributes.segment_tree import MinSegmentTree, SumSegmentTree
-from agent_attributes.ReplayMemory import ReplayBuffer
+from agents.Rainbow.agent_attributes.segment_tree import MinSegmentTree, SumSegmentTree
+from agents.Rainbow.agent_attributes.ReplayMemory import ReplayBuffer
 
 class PrioritizedReplayBuffer(ReplayBuffer):
     """Prioritized Replay buffer.
@@ -61,7 +61,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         done: bool,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool]:
         """Store experience and priority."""
-        transition = super().store(obs, act, rew, next_obs, done)
+        transition = super().trackGameState(obs, act, rew, next_obs, done)
         
         if transition:
             self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha

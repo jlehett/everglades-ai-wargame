@@ -11,7 +11,7 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.Minimized.DQNAgent import DQNAgent
+from agents.Rainbow.agent import DQNAgent
 from agents.State_Machine.random_actions_delay import random_actions_delay
 
 #############################
@@ -35,7 +35,7 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(player_num=0, map_name=map_name)
+players[0] = DQNAgent(player_num=0, map_name=map_file, observation_space = env.observation_space)
 names[0] = "DQN Agent"
 players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent Delay'
@@ -45,7 +45,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 5000
+n_episodes = 1000
 
 #########################
 # Statistic variables   #
@@ -117,7 +117,7 @@ for i_episode in range(1, n_episodes+1):
     ################################
     # End of episode agent updates #
     ################################
-    players[0].end_of_episode(i_episode)
+    players[0].end_of_episode(i_episode, n_episodes)
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):

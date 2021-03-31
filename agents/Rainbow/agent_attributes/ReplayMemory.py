@@ -21,12 +21,15 @@ class ReplayBuffer:
         obs_dim: int, 
         size: int, 
         batch_size: int = 32, 
-        n_step: int = 1, 
+        n_step: int = 3, 
         gamma: float = 0.99
     ):
-        self.obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.next_obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.acts_buf = np.zeros([size], dtype=np.float32)
+        self.units = 12
+        self.moves = 7
+        self.unit_moved = 2
+        self.obs_buf = np.zeros((size, obs_dim), dtype=np.float32)
+        self.next_obs_buf = np.zeros((size, obs_dim), dtype=np.float32)
+        self.acts_buf = np.zeros((size) , dtype=np.float32)
         self.rews_buf = np.zeros([size], dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.max_size, self.batch_size = size, batch_size
