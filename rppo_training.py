@@ -67,15 +67,30 @@ ACTION_DIM = 132
 OBSERVATION_DIM = 105
 UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
+NETWORK_SAVE_NAME = "saved_agents/rppo_new"
+SAVE_AFTER_EPISODE = 10
+TRAIN = True
 DEVICE = "GPU"
 #################
 
 #################
 # Setup agents  #
 #################
-players[0] = RPPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP, LAMBD, DEVICE)
+players[0] = RPPOAgent(OBSERVATION_DIM,
+                ACTION_DIM, 
+                N_LATENT_VAR,
+                LR,
+                BETAS,
+                GAMMA,
+                UPDATE_TIMESTEP,
+                K_EPOCHS,
+                EPS_CLIP, 
+                LAMBD, 
+                DEVICE, 
+                TRAIN,
+                SAVE_AFTER_EPISODE,
+                NETWORK_SAVE_NAME)
 names[0] = 'RPPO Agent'
-hidden = torch.zeros(N_LATENT_VAR).unsqueeze(0).unsqueeze(0)
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
@@ -91,7 +106,8 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 3000
+n_episodes = 10
+RENDER_CHARTS = True # Determines if final charts should be rendered
 timestep = 0
 
 #########################
@@ -140,7 +156,7 @@ for i_episode in range(1, n_episodes+1):
             env.render()
 
         actions[1] = players[1].get_action( observations[1] )
-        actions[0], hidden = players[0].get_action( observations[0], hidden )
+        actions[0] = players[0].get_action( observations[0] )
 
         # Update env
         #turn_scores,_ = env.game.game_turn(actions) # Gets the score from the server
@@ -165,14 +181,15 @@ for i_episode in range(1, n_episodes+1):
             players[0].memory.rewards.append(turn_scores)
             players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
 
+        # Handle end of game updates
+        if done:
+            players[0].end_of_episode(i_episode)
+
         # Updates agent after UPDATE_TIMESTEP number of steps
         if timestep % UPDATE_TIMESTEP == 0:
             players[0].optimize_model()
             players[0].memory.clear_memory()
             timestep = 0
-
-            # Reset the hidden states
-            hidden = torch.zeros(N_LATENT_VAR).unsqueeze(0).unsqueeze(0)
         #########################
 
         current_eps = timestep
@@ -223,72 +240,78 @@ for i_episode in range(1, n_episodes+1):
         reward_shaper.update_rewards(i_episode)
     ################################
     env.close()
+
+    if RENDER_CHARTS:
+        render_charts()
     #########################
     #   End Training Loop   #
     #########################
 
+def render_charts():
+    """
+    Renders charts for RPPO using stored logged data
+    """
+    #####################
+    # Plot final charts #
+    #####################
+    fig, ((ax1, ax3),(ax2,ax4)) = plt.subplots(2,2)
 
-#####################
-# Plot final charts #
-#####################
-fig, ((ax1, ax3),(ax2,ax4)) = plt.subplots(2,2)
+    #########################
+    #   Epsilon Plotting    #
+    #########################
+    par1 = ax1.twinx()
+    par2 = ax2.twinx()
+    par3 = ax1.twinx()
+    par4 = ax2.twinx()
+    #########################
 
-#########################
-#   Epsilon Plotting    #
-#########################
-par1 = ax1.twinx()
-par2 = ax2.twinx()
-par3 = ax1.twinx()
-par4 = ax2.twinx()
-#########################
+    ######################
+    #   Cumulative Plot  #
+    ######################
+    fig.suptitle('Scores')
+    ax1.plot(np.arange(1, n_episodes+1),scores)
+    ax1.set_ylabel('Cumulative Scores')
+    ax1.yaxis.label.set_color('blue')
+    par1.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+    par1.set_ylabel('Loss')
+    par1.yaxis.label.set_color('red')
+    #######################
 
-######################
-#   Cumulative Plot  #
-######################
-fig.suptitle('Scores')
-ax1.plot(np.arange(1, n_episodes+1),scores)
-ax1.set_ylabel('Cumulative Scores')
-ax1.yaxis.label.set_color('blue')
-par1.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par1.set_ylabel('Loss')
-par1.yaxis.label.set_color('red')
-#######################
+    ##################################
+    #   Average Per K Episodes Plot  #
+    ##################################
+    par2.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+    par2.set_ylabel('Loss')
+    par2.yaxis.label.set_color('red')
+    ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
+    ax2.set_ylabel('Average Scores')
+    ax2.yaxis.label.set_color('blue')
+    ax2.set_xlabel('Episode #')
+    #############################
 
-##################################
-#   Average Per K Episodes Plot  #
-##################################
-par2.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par2.set_ylabel('Loss')
-par2.yaxis.label.set_color('red')
-ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
-ax2.set_ylabel('Average Scores')
-ax2.yaxis.label.set_color('blue')
-ax2.set_xlabel('Episode #')
-#############################
+    ##################################
+    #   Actor Loss Plot              #
+    ##################################
+    par3.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+    par3.set_ylabel('Loss')
+    par3.yaxis.label.set_color('red')
+    ax3.plot(np.arange(1, n_episodes+1),actorLossVals)
+    ax3.set_ylabel('Actor Loss')
+    ax3.yaxis.label.set_color('blue')
+    ax3.set_xlabel('Episode #')
+    ##################################
 
-##################################
-#   Actor Loss Plot              #
-##################################
-par3.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par3.set_ylabel('Loss')
-par3.yaxis.label.set_color('red')
-ax3.plot(np.arange(1, n_episodes+1),actorLossVals)
-ax3.set_ylabel('Actor Loss')
-ax3.yaxis.label.set_color('blue')
-ax3.set_xlabel('Episode #')
-##################################
+    ##################################
+    #   Critic Loss Plot             #
+    ##################################
+    par4.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
+    par4.set_ylabel('Loss')
+    par4.yaxis.label.set_color('red')
+    ax4.plot(np.arange(1, n_episodes+1),criticLossVals)
+    ax4.set_ylabel('Critic Loss')
+    ax4.yaxis.label.set_color('blue')
+    ax4.set_xlabel('Episode #')
+    ##################################
 
-##################################
-#   Critic Loss Plot             #
-##################################
-par4.plot(np.arange(1,n_episodes+1),lossVals,color="red",alpha=0.5)
-par4.set_ylabel('Loss')
-par4.yaxis.label.set_color('red')
-ax4.plot(np.arange(1, n_episodes+1),criticLossVals)
-ax4.set_ylabel('Critic Loss')
-ax4.yaxis.label.set_color('blue')
-ax4.set_xlabel('Episode #')
-##################################
-
-plt.show()
-#########
+    plt.show()
+    #########
