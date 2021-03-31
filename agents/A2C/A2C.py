@@ -25,13 +25,12 @@ class A2C():
         self.action_space = action_space
         self.n_latent_var = n_latent_var
         self.K_epochs = 8
-        print(action_space)
         self.memory = Memory()
         self.loss = 0
         self.shape = (7, 2)
 
         self.model = ActorCritic(self.state_space, self.action_space, self.n_latent_var)
-        # self.model.cuda()
+        self.model.cuda()
         self.optimizer = optim.Adam(self.model.parameters())
 
     def get_action(self, obs):
