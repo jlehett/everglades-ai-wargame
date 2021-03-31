@@ -31,6 +31,7 @@ class A2C():
         self.shape = (7, 2)
 
         self.model = ActorCritic(self.state_space, self.action_space, self.n_latent_var)
+        self.model.cuda()
         self.optimizer = optim.Adam(self.model.parameters())
 
     def get_action(self, obs):
@@ -63,7 +64,6 @@ class A2C():
        
         # Normalizing the rewards:
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        print(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
