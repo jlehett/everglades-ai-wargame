@@ -1,8 +1,5 @@
 import torch
-import torch.nn as nn
 import numpy as np
-from torch.distributions import Categorical
-import gym
 import pickle
 from agents.PPO.ActorCritic import ActorCritic
 from agents.PPO.PPOMemory import Memory
@@ -104,7 +101,7 @@ class PPOAgent:
 
         # Set the loss function
         # Only use MSELoss for PPO
-        self.MSE = nn.MSELoss()
+        self.MSE = torch.nn.MSELoss()
 
     def get_action(self, observation):
         """
@@ -147,7 +144,7 @@ class PPOAgent:
         Optimizes the model using Generalized Advantage Estimation
         """
 
-        # Convert list to tensor
+        # Pull data from memory
         old_states = torch.stack(self.memory.states).to(device).detach()
         next_states = torch.stack(self.memory.next_states).to(device).detach()
         old_actions = torch.stack(self.memory.actions).to(device).detach()
@@ -155,8 +152,10 @@ class PPOAgent:
         mask = torch.stack(self.memory.is_terminals).to(device).detach()
         reward = torch.from_numpy(np.asarray(self.memory.rewards)).to(device).detach()
         
+        # Set the hidden states
         hidden = torch.zeros(old_states.size(0),self.n_latent_var).unsqueeze(0).to(device)
 
+        # Calculate values for Generalized Advantage Estimation
         _,values,_ = self.policy.evaluate(old_states, old_actions, hidden)
         values = values.detach()
 
@@ -224,6 +223,7 @@ class PPOAgent:
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
+            # Calculate the losses
             actor_loss = torch.min(surr1, surr2)
             critic_loss = self.MSE(state_values, rewards) * 0.5
             entropy = 0.01*dist_entropy

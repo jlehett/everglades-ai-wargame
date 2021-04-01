@@ -1,12 +1,8 @@
 ## Static Imports
 import os
-import importlib
 import gym
 import gym_everglades
-import pdb
 import sys
-import matplotlib.pyplot as plt
-from collections import deque
 import torch
 import random
 
@@ -112,7 +108,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 10
+n_episodes = 1000
 RENDER_CHARTS = True # Determines if final charts should be rendered
 timestep = 0
 
@@ -199,8 +195,6 @@ for i_episode in range(1, n_episodes+1):
 
         # Increment the turnNum
         turnNum += 1
-
-        #pdb.set_trace()
     #####################
     #   End Game Loop   #
     #####################
