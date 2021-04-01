@@ -61,7 +61,7 @@ class ActorCritic(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def act(self, state, memory, hidden):
+    def act(self, state = None, memory = None, hidden = None):
         """
         Queries the actor network to get an action to be used in everglades
 
@@ -97,10 +97,11 @@ class ActorCritic(nn.Module):
 
         # Append each action along with its log_prob and the current state separately
         # Makes the loss function more manageable
-        for i in range(7):
-            memory.logprobs.append(dist.log_prob(action_indices[i]))
-            memory.states.append(state)
-            memory.actions.append(action_indices[i])
+        if not memory == None:
+            for i in range(7):
+                memory.logprobs.append(dist.log_prob(action_indices[i]))
+                memory.states.append(state)
+                memory.actions.append(action_indices[i])
 
         return action_indices, hidden
 

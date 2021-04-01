@@ -5,10 +5,12 @@ import gym_everglades
 import sys
 import torch
 import random
-
 import numpy as np
 
+# Import everglades
 from everglades_server import server
+
+# Import the agent
 from agents.PPO.PPOAgent import PPOAgent
 
 # Import agent to train against
@@ -67,11 +69,11 @@ ACTION_DIM = 132
 OBSERVATION_DIM = 105
 UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
-NETWORK_SAVE_NAME = "saved_agents/rppo_new"
+NETWORK_SAVE_NAME = "saved-agents/rppo_new"
 SAVE_AFTER_EPISODE = 100
-USE_RECURRENT = False
+USE_RECURRENT = True
 TRAIN = True
-DEVICE = "GPU"
+DEVICE = "CPU"
 #################
 
 #################
@@ -231,9 +233,6 @@ for i_episode in range(1, n_episodes+1):
         print('\rEpisode {}\tAverage Score {:.4f}'.format(i_episode,np.mean(short_term_wr)))
         stats.short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
-
-        # Handle reward updates
-        reward_shaper.update_rewards(i_episode)
     ################################
     env.close()
 
@@ -244,6 +243,9 @@ for i_episode in range(1, n_episodes+1):
 #####################
 #   FINAL STEPS     #
 #####################
+
+# Save final model state
+players[0].save_network(i_episode)
 
 # Render charts to show visual of training stats
 if RENDER_CHARTS:

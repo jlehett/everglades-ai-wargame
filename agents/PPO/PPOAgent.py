@@ -273,6 +273,7 @@ class PPOAgent:
         if self.network_save_name:
             save_file = open(self.network_save_name + '.pickle', 'wb')
             pickle.dump({
+                'type': 'PPO',
                 'policy_old_state_dict': self.policy_old.state_dict(),
                 'policy_state_dict': self.policy.state_dict(),
                 'update_timestep': self.update_timestep,
