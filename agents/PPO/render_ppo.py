@@ -3,7 +3,7 @@ import numpy as np
 
 def render_charts(stats):
     """
-    Renders charts for PPO using stored logged data
+    Renders charts for PPO using stored statistical data
 
     @params stats The statistics class that stores the data to be plotted
     """
