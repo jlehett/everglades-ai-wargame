@@ -8,17 +8,37 @@ import sys
 import matplotlib.pyplot as plt
 from collections import deque
 import torch
+import random
 
 import numpy as np
 
 from everglades_server import server
-from agents.PPO1.PPOAgent import PPOAgent
+from agents.PPO.PPOAgent import PPOAgent
 
 # Import agent to train against
 sys.path.append(os.path.abspath('../'))
-from agents.State_Machine.random_actions_delay import random_actions_delay
+from agents.State_Machine.random_actions import random_actions
 
-from RewardShaping import RewardShaping
+# Import utilities
+from utils.RewardShaping import RewardShaping
+from utils.Statistics import AgentStatistics
+from agents.PPO.render_ppo import render_charts
+
+from agents.State_Machine.random_actions_delay import random_actions_delay
+from agents.State_Machine.random_actions import random_actions
+from agents.State_Machine.bull_rush import bull_rush
+from agents.State_Machine.all_cycle import all_cycle
+from agents.State_Machine.base_rush_v1 import base_rushV1
+from agents.State_Machine.cycle_rush_turn25 import Cycle_BRush_Turn25
+from agents.State_Machine.cycle_rush_turn50 import Cycle_BRush_Turn50
+from agents.State_Machine.cycle_target_node import Cycle_Target_Node
+from agents.State_Machine.cycle_target_node1 import cycle_targetedNode1
+from agents.State_Machine.cycle_target_node11 import cycle_targetedNode11
+from agents.State_Machine.cycle_target_node11P2 import cycle_targetedNode11P2
+from agents.State_Machine.random_actions_2 import random_actions_2
+from agents.State_Machine.same_commands_2 import same_commands_2
+from agents.State_Machine.same_commands import same_commands
+from agents.State_Machine.swarm_agent import SwarmAgent
 
 #############################
 # Environment Config Setup  #
@@ -41,31 +61,43 @@ names = {}
 #####################
 #   PPO Constants   #
 #####################
-N_LATENT_VAR = 128 # Number of nodes in hidden layers
-LR = 0.001 
-K_EPOCHS = 4 # Number of PPO epochs
-GAMMA = 0.99 # For Advantage estimation
-BETAS = (0.9,0.999) # For Adam
-EPS_CLIP = 0.2 # PPO EPS Value
+N_LATENT_VAR = 248
+LR = 0.0001
+K_EPOCHS = 8
+GAMMA = 0.99
+BETAS = (0.9,0.999)
+EPS_CLIP = 0.2
 ACTION_DIM = 132
 OBSERVATION_DIM = 105
-NUM_GAMES_TILL_UPDATE = 10 # NOT CURRENTLY BEING UTILIZED, MAY USE LATER
-UPDATE_TIMESTEP = 2000 # Time until PPO update
-INTR_REWARD_STRENGTH = 0.8 # For ICM reward strength
-ICM_BATCH_SIZE = 500 # For ICM Update
-TARGET_KL = 0.01 # For KL Divergence Early Stopping
-LAMBD = 0.95 # For Generalized Advantage Estimation
-USE_ICM = False # True uses ICM
-BULK_UPDATE = False # True uses bulk update (updating with the 7 actions put together in memory as opposed to separately)
+UPDATE_TIMESTEP = 2000
+LAMBD = 0.95
+NETWORK_SAVE_NAME = "saved_agents/rppo_new"
+SAVE_AFTER_EPISODE = 100
+USE_RECURRENT = False
+TRAIN = True
+DEVICE = "GPU"
 #################
 
 #################
 # Setup agents  #
 #################
-players[0] = PPOAgent(OBSERVATION_DIM,ACTION_DIM, N_LATENT_VAR,LR,BETAS,GAMMA,K_EPOCHS,EPS_CLIP,
-                        INTR_REWARD_STRENGTH, ICM_BATCH_SIZE, TARGET_KL, LAMBD, USE_ICM, BULK_UPDATE)
-names[0] = 'PPO Agent'
-players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
+players[0] = PPOAgent(OBSERVATION_DIM,
+                ACTION_DIM, 
+                N_LATENT_VAR,
+                LR,
+                BETAS,
+                GAMMA,
+                UPDATE_TIMESTEP,
+                K_EPOCHS,
+                EPS_CLIP, 
+                LAMBD,
+                USE_RECURRENT, 
+                DEVICE, 
+                TRAIN,
+                SAVE_AFTER_EPISODE,
+                NETWORK_SAVE_NAME)
+names[0] = 'RPPO Agent'
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
 
@@ -78,25 +110,34 @@ reward_shaper = RewardShaping()
 
 actions = {}
 
-n_episodes = 1000
+## Set high episode to test convergence
+# Change back to resonable setting for other testing
+n_episodes = 10
+RENDER_CHARTS = True # Determines if final charts should be rendered
 timestep = 0
 
 #########################
 # Statistic variables   #
 #########################
-scores = []
-k = 50 # Only has an affect on the average win rate graph
-short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
-short_term_scores = [0.5] # Average win rates per k episodes
-ties = 0
-losses = 0
+k = 50 #The set number of episodes to show win rates for
+
+# The Stats class (for saving statistics)
+stats = AgentStatistics(names[0], n_episodes, k, save_file="saved_stats/rppo_new")
+
+# General stats
 score = 0
+losses = 0
+ties = 0
+
+# Short wr
+short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
+
+# Epsilon and losses
 current_eps = 0
-epsilonVals = []
 current_loss = 0
-lossVals = []
-current_temp = 0
-tempVals = []
+current_actor_loss = 0
+current_critic_loss = 0
+entropy = 0
 #########################
 
 #####################
@@ -106,6 +147,7 @@ for i_episode in range(1, n_episodes+1):
     #################
     #   Game Loop   #
     #################
+
     done = 0
     observations = env.reset(
         players=players,
@@ -117,6 +159,7 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
+    turnNum = 0
     while not done:
         if i_episode % 25 == 0:
             env.render()
@@ -126,34 +169,22 @@ for i_episode in range(1, n_episodes+1):
             actions[pid] = players[pid].get_action( observations[pid] )
 
         # Update env
-        turn_scores,_ = env.game.game_turn(actions) # Gets the score from the server
         observations, reward, done, info = env.step(actions)
 
         # Reward Shaping
-        won,turn_scores,final_score,final_score_random = reward_shaper.get_reward(done, turn_scores)
+        turn_scores = reward_shaper.reward_short_games(reward, done, turnNum)
 
         timestep += 1
         #########################
         # Handle agent update   #
         #########################
+        players[0].remember_game_state(observations[0], turn_scores, done)
 
-        # Add in rewards and terminals 7 times to reflect the other memory additions
-        # i.e. Actions are added one at a time (for a total of 7) into the memory
+        # Handle end of game updates
+        if done:
+            players[0].end_of_episode(i_episode)
 
-        # Set inverse of done for is_terminals (prevents need to inverse later)
-        inv_done = 1 if done == 0 else 0
-
-        if not BULK_UPDATE:
-            for i in range(7):
-                players[0].memory.next_states.append(torch.from_numpy(observations[0]).float())
-                players[0].memory.rewards.append(turn_scores[0])
-                players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
-        else:
-            players[0].memory.next_states.append(torch.from_numpy(observations[0]).float())
-            players[0].memory.rewards.append(turn_scores[0])
-            players[0].memory.is_terminals.append(torch.from_numpy(np.asarray(inv_done)))
-
-        # Updates agent after 150 * Number of games timesteps
+        # Updates agent after UPDATE_TIMESTEP number of steps
         if timestep % UPDATE_TIMESTEP == 0:
             players[0].optimize_model()
             players[0].memory.clear_memory()
@@ -162,7 +193,12 @@ for i_episode in range(1, n_episodes+1):
 
         current_eps = timestep
         current_loss = players[0].loss
-        current_temp = players[0].temperature
+        current_actor_loss = players[0].actor_loss
+        current_critic_loss = players[0].critic_loss
+        entropy = players[0].dist_entropy
+
+        # Increment the turnNum
+        turnNum += 1
 
         #pdb.set_trace()
     #####################
@@ -172,88 +208,52 @@ for i_episode in range(1, n_episodes+1):
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
         score += 1
+        stats.wins += 1
         short_term_wr[(i_episode-1)%k] = 1
     elif(reward[0] == reward[1]):
         ties += 1
+        stats.ties += 1
     else:
         losses += 1
+        stats.losses += 1
     ###
 
     #############################################
     # Update Score statistics for final chart   #
     #############################################
-    scores.append(score / i_episode) ## save the most recent score
+    stats.scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
-    epsilonVals.append(current_eps)
-    lossVals.append(current_loss)
-    tempVals.append(current_temp)
+    stats.epsilonVals.append(current_eps)
+    stats.lossVals.append(current_loss)
+    stats.actorLossVals.append(current_actor_loss)
+    stats.criticLossVals.append(current_critic_loss)
     #############################################
 
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Epsilon: {:.2f} Temperature: {:.2f}  Loss: {:.2f} Inv_Loss: {:.2f} Fwd_Loss: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps,current_temp,current_loss,players[0].inv_loss, players[0].forward_loss), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.4f}\tWins: {} Losses: {} Ties: {} Steps until Update: {} Loss: {:.4f} Actor Loss: {:.4f} Critic Loss: {:.4f} Entropy: {:.4f}\n'.format(i_episode,current_wr,score,losses,ties,(UPDATE_TIMESTEP - current_eps),current_loss,current_actor_loss,current_critic_loss,entropy), end="")
     if i_episode % k == 0:
-        print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
-        short_term_scores.append(np.mean(short_term_wr))
+        print('\rEpisode {}\tAverage Score {:.4f}'.format(i_episode,np.mean(short_term_wr)))
+        stats.short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
 
         # Handle reward updates
         reward_shaper.update_rewards(i_episode)
     ################################
     env.close()
+
     #########################
     #   End Training Loop   #
     #########################
 
-
 #####################
-# Plot final charts #
+#   FINAL STEPS     #
 #####################
-fig, (ax1, ax2) = plt.subplots(2)
 
-#########################
-#   Epsilon Plotting    #
-#########################
-par1 = ax1.twinx()
-par2 = ax2.twinx()
-par3 = ax1.twinx()
-par4 = ax2.twinx()
-par3.spines["right"].set_position(("axes", 1.1))
-par4.spines["right"].set_position(("axes", 1.1))
-#########################
+# Render charts to show visual of training stats
+if RENDER_CHARTS:
+    render_charts(stats)
 
-######################
-#   Cumulative Plot  #
-######################
-ax1.set_ylim([0.0,1.0])
-fig.suptitle('Win rates')
-ax1.plot(np.arange(1, n_episodes+1),scores)
-ax1.set_ylabel('Cumulative win rate')
-ax1.yaxis.label.set_color('blue')
-par1.plot(np.arange(1,n_episodes+1),tempVals,color="green",alpha=0.5)
-par1.set_ylabel('Temperature')
-par1.yaxis.label.set_color('green')
-par3.plot(np.arange(1,n_episodes+1),lossVals,color="orange",alpha=0.5)
-par3.set_ylabel('Loss')
-par3.yaxis.label.set_color('orange')
-#######################
-
-##################################
-#   Average Per K Episodes Plot  #
-##################################
-ax2.set_ylim([0.0,1.0])
-par2.plot(np.arange(1,n_episodes+1),tempVals,color="green",alpha=0.5)
-par2.set_ylabel('Temperature')
-par2.yaxis.label.set_color('green')
-par4.plot(np.arange(1,n_episodes+1),lossVals,color="orange",alpha=0.5)
-par4.set_ylabel('Loss')
-par4.yaxis.label.set_color('orange')
-ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
-ax2.set_ylabel('Average win rate')
-ax2.yaxis.label.set_color('blue')
-ax2.set_xlabel('Episode #')
-plt.show()
-#############################
-
-#########
+# Save run stats
+stats.save_stats()
