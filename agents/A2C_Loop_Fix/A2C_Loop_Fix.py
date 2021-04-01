@@ -10,8 +10,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
-#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = "cpu"
 
 # Hyperparameters
 learning_rate = 1e-2
@@ -25,14 +25,14 @@ class A2C_Loop_Fix():
         self.state_space = observation_space.shape[0]
         self.action_space = action_space
         self.n_latent_var = n_latent_var
-        print(action_space)
-        self.K_epochs = K_epochs
+        self.K_epochs = 8
         self.memory = Memory()
         self.loss = 0
         self.shape = (7, 2)
 
         self.model = ActorCritic(self.state_space, self.action_space, self.n_latent_var)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+        self.model.cuda()
+        self.optimizer = optim.Adam(self.model.parameters())
 
     def get_action(self, obs):
         action = np.zeros(self.shape)
@@ -42,8 +42,8 @@ class A2C_Loop_Fix():
         chosen_units = chosen_indices // 12
         chosen_nodes = chosen_indices % 11
 
-        action[:,0] = chosen_units
-        action[:,1] = chosen_nodes
+        action[:,0] = chosen_units.cpu()
+        action[:,1] = chosen_nodes.cpu()
 
         #log_prob = self.model.evaluate(obs, action)
         #print(action)
@@ -75,19 +75,15 @@ class A2C_Loop_Fix():
             logprobs, state_values, dist_entropy = self.model.evaluate(states, actions)
             entropy += dist_entropy.mean()
             
-            advantage = rewards - state_values
+        advantage = rewards - state_values
 
-            torch.autograd.set_detect_anomaly(True)
+        actor_loss = -(logprobs * advantage.detach()).mean()
+        critic_loss = advantage.pow(2).mean()
+        self.loss = actor_loss + 0.5 * critic_loss - 0.001 * entropy
 
-            actor_loss = -(logprobs * advantage.detach()).mean()
-            critic_loss = advantage.pow(2).mean()
-            loss = (actor_loss + 0.5 * critic_loss - 0.001 * entropy)
-
-            self.optimizer.zero_grad()
-            loss.backward(retain_graph=True)
-            #self.loss.backward()
-            self.optimizer.step()
-            self.loss = loss
+        self.optimizer.zero_grad()
+        self.loss.backward()
+        self.optimizer.step()
 
         self.memory.clear_memory()
 
@@ -141,11 +137,12 @@ class ActorCritic(nn.Module):
             #nn.Linear(528, 1)
         )
 
+
     def forward(self, x):
         raise NotImplementedError
 
     def act(self, state, memory):
-        state = torch.from_numpy(state).float()
+        state = torch.from_numpy(state).float().to(device)
         action_probs = self.actor(state)
 
         # Uses Boltzmann style exploration by sampling from distribution
@@ -153,7 +150,7 @@ class ActorCritic(nn.Module):
         
         # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
         # Enables us to grab non-duplicate actions faster
-        action_indices = torch.multinomial(action_probs,7,replacement=False)
+        action_indices = torch.multinomial(action_probs,7,replacement=False).to(device)
 
         for i in range(7):
             memory.logprobs.append(dist.log_prob(action_indices[i]))
@@ -177,4 +174,4 @@ class ActorCritic(nn.Module):
         # Get expected network output
         state_value = self.critic(state)
 
-        return action_logprobs, torch.squeeze(state_value), dist_entropy
+        return action_logprobs, torch.squeeze(state_value).to(device), dist_entropy

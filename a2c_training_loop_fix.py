@@ -10,6 +10,8 @@ from collections import deque
 
 import numpy as np
 
+import utils.reward_shaping as reward_shaping
+
 from everglades_server import server
 from agents.A2C_Loop_Fix.A2C_Loop_Fix import A2C_Loop_Fix
 from agents.random_actions import random_actions
@@ -60,13 +62,13 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 1000
+n_episodes = 5000
 
 #########################
 # Statistic variables   #
 #########################
 scores = []
-k = 100
+k = 1
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
@@ -78,6 +80,7 @@ current_loss = 0
 lossVals = []
 average_reward = 0
 avgRewardVals = []
+turn_num = 0
 #########################
 
 #####################
@@ -87,6 +90,7 @@ for i_episode in range(1, n_episodes+1):
     #################
     #   Game Loop   #
     #################
+    turn_num = 0
     done = 0
     observations = env.reset(
         players=players,
@@ -101,8 +105,11 @@ for i_episode in range(1, n_episodes+1):
     # Reset the reward average
     average_reward = 0
     while not done:
-        if i_episode % 5 == 0:
-            env.render()
+        if i_episode % 100 == 0:
+            try:
+                env.render()
+            except:
+                pass
 
         ### Removed to save processing power
         # Print statements were taking forever
@@ -122,6 +129,13 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
         #reward[0] = players[0].set_reward(prev_observation) if players[0].set_reward(prev_observation) != 0 else reward[0]
+        
+        # Reward short games
+        if done:
+            if reward[0] > reward[1]:
+                reward[0] = (150 - turn_num) / 150
+            else:
+                reward[0] = -1
 
         # Update the agent's average reward
         average_reward += reward[0]
@@ -139,6 +153,7 @@ for i_episode in range(1, n_episodes+1):
             #current_eps = players[0].Temp
         current_loss = players[0].loss
 
+        turn_num = 0
         #pdb.set_trace()
     #####################
     #   End Game Loop   #
@@ -168,13 +183,17 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Reward: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,average_reward), end="")
+    # print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Reward: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,average_reward), end="")
     if i_episode % k == 0:
-        print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
+        print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Reward: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,average_reward), end="")
+        #print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)   
     ################################
-    env.close()
+    try:
+        env.close()
+    except:
+        pass
     #########################
     #   End Training Loop   #
     #########################
