@@ -6,7 +6,7 @@ import math
 # Some adjustable constants for rendering
 CONTROL_POINT_SIZE = 30
 CONTROL_POINT_Y_SPACING = 150
-UNIT_SIZE = 7
+UNIT_SIZE = 10
 RANDOM_NOISE = 25
 IN_TRANSIT_SPACE = 20
 TIME_BETWEEN_FRAMES = 0.0

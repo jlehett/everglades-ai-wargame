@@ -8,6 +8,7 @@ import sys
 import matplotlib.pyplot as plt
 from collections import deque
 from statsmodels.stats.proportion import proportion_confint
+import random
 
 import numpy as np
 
@@ -17,11 +18,12 @@ from everglades_server import server
 from agents.Smart_State.DQNAgent import DQNAgent
 from agents.State_Machine.random_actions_delay import random_actions_delay
 from agents.State_Machine.random_actions import random_actions
-from agents.State_Machine.base_rush_v1 import base_rushV1
-from agents.State_Machine.cycle_target_node11P2 import cycle_targetedNode11P2
 
 DISPLAY = False # Set whether the visualizer should ever run
-TRAIN = True # Set whether the agent should learn or not
+TRAIN_TEAM_0 = True # Set whether the agents on team 0 should learn or not
+TRAIN_TEAM_1 = True # Set whether the agents on team 1 should learn or not
+
+NUM_AGENTS_PER_TEAM = 4
 
 #############################
 # Environment Config Setup  #
@@ -44,16 +46,30 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(
-    player_num=0,
-    map_name=map_name,
-    train=TRAIN,
-    network_save_name=None,
-    network_load_name=None,
-)
-names[0] = "DQN Agent"
-players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent Delay'
+team0 = []
+team1 = []
+for i in range(1, NUM_AGENTS_PER_TEAM+1):
+    team0.append(
+        DQNAgent(
+            player_num=0,
+            map_name=map_name,
+            train=TRAIN_TEAM_0,
+            network_save_name='agents/Smart_State/saved_models/self-player-0-' + str(i),
+            network_load_name='agents/Smart_State/saved_models/self-player-0-' + str(i),
+        )
+    )
+    team1.append(
+        DQNAgent(
+            player_num=1,
+            map_name=map_name,
+            train=TRAIN_TEAM_1,
+            network_save_name='agents/Smart_State/saved_models/self-player-1-' + str(i),
+            network_load_name='agents/Smart_State/saved_models/self-player-1-' + str(i)
+        )
+    )
+
+names[0] = 'DQN Agent - Team 0'
+names[1] = 'DQN Agent - Team 1'
 #################
 
 actions = {}
@@ -84,6 +100,10 @@ avgRewardVals = []
 #   Training Loop   #
 #####################
 for i_episode in range(1, n_episodes+1):
+    # Pick random agents from each team to compete
+    players[0] = random.choice(team0)
+    players[1] = random.choice(team1)
+
     #################
     #   Game Loop   #
     #################
@@ -105,13 +125,17 @@ for i_episode in range(1, n_episodes+1):
             if i_episode % 5 == 0:
                 env.render()
 
-        # Get actions for agent
-        actions[0], directions = players[0].get_action( observations[0] )
-        # Get actions for random agent
-        actions[1] = players[1].get_action( observations[1] )
+        # Create storage for previous observations and directions for each player
+        prev_observations = [None, None]
+        directions = [None, None]
 
-        # Grab previos observation for agent
-        prev_observation = observations[0]
+        # Get actions for each player
+        for pid in players:
+            actions[pid], directions[pid] = players[pid].get_action( observations[pid] )
+
+        # Grab previous observations for each agent
+        prev_observations[0] = observations[0]
+        prev_observations[1] = observations[1]
 
         # Update env
         observations, reward, done, info = env.step(actions)
@@ -120,12 +144,38 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
         players[0].remember_game_state(
-            prev_observation,
+            prev_observations[0],
             observations[0],
-            directions,
-            reward_shaping.reward_short_games(0, reward, done, turn_num)
+            directions[0],
+            reward_shaping.transition(
+                reward_shaping.normalized_score,
+                reward_shaping.reward_short_games,
+                1000,
+                i_episode,
+                0,
+                reward,
+                done,
+                turn_num
+            )
         )
         players[0].optimize_model()
+
+        players[1].remember_game_state(
+            prev_observations[1],
+            observations[1],
+            directions[1],
+            reward_shaping.transition(
+                reward_shaping.normalized_score,
+                reward_shaping.reward_short_games,
+                1000,
+                i_episode,
+                1,
+                reward,
+                done,
+                turn_num
+            )
+        )
+        players[1].optimize_model()
         #########################
 
         current_eps = players[0].epsilon
@@ -137,7 +187,16 @@ for i_episode in range(1, n_episodes+1):
     ################################
     # End of episode agent updates #
     ################################
-    players[0].end_of_episode(i_episode)
+    for agent in team0:
+        if agent == players[0]:
+            agent.end_of_episode(i_episode)
+        else:
+            agent.end_of_episode_not_play(i_episode)
+    for agent in team1:
+        if agent == players[1]:
+            agent.end_of_episode(i_episode)
+        else:
+            agent.end_of_episode_not_play(i_episode)
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
@@ -160,7 +219,7 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    if TRAIN:
+    if TRAIN_TEAM_0 or TRAIN_TEAM_1:
         print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
         if i_episode % k == 0:
             print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))

@@ -33,12 +33,12 @@ def modifySaveFile(save_file_path, modifications):
 # Logic to run if this file itself is run
 if __name__ == '__main__':
     # Variables to modify to use the script
-    SAVE_FILE_PATH='agents/Smart_State/saved_models/81-69'
+    SAVE_FILE_PATH='saved-agents/self_play'
     PROPERTY_MODIFICATIONS = {
-        'type': 'Smart State Fixed 1 Hidden Layer',
-        'description': 'Smart State with 1 hidden layer of size 80. Win rate of ~81% against delayed random and ~69% against pure random.',
-        'reward type': 'Reward Short Games',
-        'keys to display': ['type', 'description',  'reward type', 'episodes', 'fc1_size', 'batch_size', 'target_update', 'memory_size', 'gamma', 'n_step'],
+        'type': 'Smart State Fixed 2 Hidden Layers',
+        'description': 'Smart State with 2 hidden layers of size 80. Trained in self_play_royale.',
+        'reward type': 'Transition - Normalized Score to Reward Short Games',
+        'keys to display': ['type', 'description',  'reward type', 'episodes', 'fc1_size', 'fc2_size', 'batch_size', 'target_update', 'memory_size', 'gamma', 'n_step'],
     }
     
     # Modify the file

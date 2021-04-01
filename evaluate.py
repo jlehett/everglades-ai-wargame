@@ -83,16 +83,16 @@ STATE_MACHINE_OPTIONS = {
 #########################################
 
 PLAYER_1_AGENT = AgentLoader.loadAgent(
-    save_file_path='saved-agents/81-69',
+    save_file_path='saved-agents/70-87_fc2',
     player_num=1
 )
 
 PLAYER_2_AGENT = loadStateMachine(
-    selection='Pure Random Actions',
+    selection='Base Rush V1',
     player_num=2
 )
 
-RENDER_EVERY_N_EPISODES = 0
+RENDER_EVERY_N_EPISODES = 1
 
 #########################################
 

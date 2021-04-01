@@ -15,8 +15,8 @@ from agents.Smart_State.Move_Translation import get_move
 EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (when TRAIN is set to False)
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
 TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
-TRAIN_LR_START = 1e-7 # The learning rate value to use when starting to train the network (when TRAIN is set to True)
-TRAIN_LR_MIN = 1e-7 # The minimum learning rate value to use during training (when TRAIN is set to True)
+TRAIN_LR_START = 1e-5 # The learning rate value to use when starting to train the network (when TRAIN is set to True)
+TRAIN_LR_MIN = 1e-5 # The minimum learning rate value to use during training (when TRAIN is set to True)
 
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
@@ -27,11 +27,11 @@ EVERGLADES_ACTION_SIZE = (NUM_ACTIONS, 2) # The action shape in an Everglades-re
 
 INPUT_SIZE = 59 # This is a custom value defined when creating the smart state agent
 OUTPUT_SIZE = 5 # This is a custom value defined when creating the smart state agent
-FC1_SIZE = 100 # Number of nodes in the first hidden layer
-FC2_SIZE = 100 # number of nodes in the second hidden layer
+FC1_SIZE = 80 # Number of nodes in the first hidden layer
+FC2_SIZE = 80 # number of nodes in the second hidden layer
 
 BATCH_SIZE = 1024 # The number of inputs to train on at one time
-TARGET_UPDATE = 200 # The number of episodes to wait until we update the target network
+TARGET_UPDATE = 400 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 100000 # The number of experiences to store in memory replay
 GAMMA = 0.999 # The amount to discount the future rewards by
 N_STEP = 1 # The number of steps to use in multi-step learning
@@ -108,6 +108,7 @@ class DQNAgent():
             self.target_net.load_state_dict(save_file_data.get('target_state_dict'))
             print('Loaded Saved Network:', self.network_load_name)
         else:
+            print('No Network found for player:', player_num)
             # Otherwise, we need to copy the policy network's weights to the target network to
             # begin training
             self.target_net.load_state_dict(self.policy_net.state_dict())
