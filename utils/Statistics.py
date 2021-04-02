@@ -90,9 +90,15 @@ class AgentStatistics:
         self.short_term_scores  = save_file_data['short_term_scores']
         self.epsilons           = save_file_data['epsilon']
         self.network_loss       = save_file_data['loss']
-        self.actor_loss         = save_file_data['actor_loss']
-        self.critic_loss        = save_file_data['critic_loss']
-        self.q_values           = save_file_data['q_values']
+
+        # PPO specific stats
+        if self.agent_name == 'PPO':
+            self.actor_loss         = save_file_data['actor_loss']
+            self.critic_loss        = save_file_data['critic_loss']
+        
+        # DQN Specific stats
+        if self.agent_name == 'DQN':
+            self.q_values           = save_file_data['q_values']
 
     def get_file_contents(self, save_file_path):
         """
