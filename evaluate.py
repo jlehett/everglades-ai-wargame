@@ -88,11 +88,11 @@ PLAYER_1_AGENT = AgentLoader.loadAgent(
 )
 
 PLAYER_2_AGENT = loadStateMachine(
-    selection='Pure Random Actions',
+    selection='Swarm Agent',
     player_num=2
 )
 
-RENDER_EVERY_N_EPISODES = 0
+RENDER_EVERY_N_EPISODES = 1
 
 #########################################
 

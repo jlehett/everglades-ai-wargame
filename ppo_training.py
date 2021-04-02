@@ -120,7 +120,7 @@ timestep = 0
 k = 50 #The set number of episodes to show win rates for
 
 # The Stats class (for saving statistics)
-stats = AgentStatistics(names[0], n_episodes, k, save_file="saved_stats/rppo_new")
+stats = AgentStatistics(names[0], n_episodes, k, save_file="saved-stats/rppo_new")
 
 # General stats
 score = 0
