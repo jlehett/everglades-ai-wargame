@@ -219,10 +219,10 @@ for i_episode in range(1, n_episodes+1):
     #############################################
     stats.scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
-    stats.epsilonVals.append(current_eps)
-    stats.lossVals.append(current_loss)
-    stats.actorLossVals.append(current_actor_loss)
-    stats.criticLossVals.append(current_critic_loss)
+    stats.epsilons.append(current_eps)
+    stats.network_loss.append(current_loss)
+    stats.actor_loss.append(current_actor_loss)
+    stats.critic_loss.append(current_critic_loss)
     #############################################
 
     #################################

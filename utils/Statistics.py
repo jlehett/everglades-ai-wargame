@@ -36,6 +36,9 @@ class AgentStatistics:
         self.epsilons = []
         self.network_loss = []
 
+        # DQN Q Values
+        self.q_values = []
+
         # PPO Loss stats
         self.actor_loss = []
         self.critic_loss = []
@@ -58,7 +61,8 @@ class AgentStatistics:
                 'epsilon': self.epsilons,
                 'loss': self.network_loss,
                 'actor_loss': self.actor_loss,
-                'critic_loss': self.critic_loss
+                'critic_loss': self.critic_loss,
+                'q_values': self.q_values
             }, save_file)
             save_file.close()
             print('Saved Statistics')
@@ -88,6 +92,7 @@ class AgentStatistics:
         self.network_loss       = save_file_data['loss']
         self.actor_loss         = save_file_data['actor_loss']
         self.critic_loss        = save_file_data['critic_loss']
+        self.q_values           = save_file_data['q_values']
 
     def get_file_contents(self, save_file_path):
         """

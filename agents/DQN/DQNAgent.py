@@ -1,26 +1,18 @@
-import sys
-import gym
-import math
 import random
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-import json
-from collections import namedtuple, deque
+from collections import namedtuple
 from itertools import count
-from PIL import Image
-
-from pathlib import Path
+import pickle
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torchvision.transforms as T
 
 # Import Rainbow Modules
 from agents.DQN.NoisyLinear import NoisyLinear
 from agents.DQN.PrioritizedMemory import PrioritizedMemory
+from agents.DQN.SimpleMemory import ReplayMemory
+from agents.DQN.QNetwork import QNetwork
 
 steps_done = 0
 
@@ -28,34 +20,73 @@ steps_done = 0
 custom_reward = False
 
 device = torch.device("cpu")
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#device_name = torch.cuda.get_device_name(0)
-#has_gpu = torch.cuda.is_available()
-#print(torch.cuda.version)
+
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'next_state', 'reward'))
 
 class DQNAgent():
-    def __init__(self,action_space,observation_space, player_num, lr, replay_size, batch_size, 
-                gamma, weight_decay, exploration, eps_start, eps_end,eps_decay,target_update, batch_update):
+    """
+    Implementation of Deep Q Network for everglades
+    """
+    def __init__(self,
+                action_space,
+                observation_space, 
+                player_num, 
+                lr, 
+                replay_size, 
+                batch_size, 
+                gamma, 
+                eps_start, 
+                eps_end,
+                eps_decay,
+                target_update,
+                DEVICE = "CPU",
+                train = True,
+                save_after_episode = 100,
+                network_save_name = None):
+        """
+        Initializes the DQN for everglades
 
-        # Setup constants
+        @param action_space The size of the actions in everglades
+        @param observation_space The size of the observation space in everglades
+        @param player_num The player number given by everglades
+        @param lr The set learning rate
+        @param replay_size The set size of the replay memory
+        @param batch_size The size of the batches to be pulled from the replay memory
+        @param gamma The discount factor in the loss function
+        @param eps_start The starting value of epsilon
+        @param eps_end The ending value of epsilon
+        @param eps_decay The decay rate of epsilon
+        @param target_update The time until an update of the target network occurs
+        @param DEVICE The device to use during training/evaluation
+        @param train Bool value to determine whether or not to train
+        @param save_after_episode The episode number to save at. Ex curr_episode % save_after_episode == 0
+        @param network_save_name The save file for the agent
+        """
+
+        # Enables GPU Training
+        global device
+        if DEVICE == 'GPU':
+            device = torch.device('cuda')
+
+        # Setup general parameters
         self.lr = lr
         self.replay_size = replay_size
         self.batch_size = batch_size
-        self.batch_update = batch_update
         self.gamma = gamma
-        self.weight_decay = weight_decay
-        self.exploration = exploration
         self.eps_start = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay
         self.target_update = target_update
+        self.eps_threshold = 0
+
+        # Set agent saving parameters
+        self.network_save_name = network_save_name
+        self.save_after_episode = save_after_episode
 
         #Base Setup for the DQN Agent
-        self.eps_threshold = 0
-        self.Temp = 0
         self.action_space = action_space
         self.num_groups = 12
-
         self.n_actions = action_space
         self.n_observations = observation_space.shape
         self.seed = 1
@@ -65,17 +96,17 @@ class DQNAgent():
         self.target_net = QNetwork(self.n_observations,self.n_actions,self.seed).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
+        self.train = train
 
-        # Added weight decay and LR for testing
-        self.optimizer = optim.Adam(self.policy_net.parameters(),lr = self.lr, weight_decay=self.weight_decay)
+        # Create Optimizer and Memory
+        self.optimizer = optim.Adam(self.policy_net.parameters(),lr = self.lr)
         self.memory = ReplayMemory(self.replay_size)
         self.prioritized_memory = PrioritizedMemory(self.replay_size)
 
+        # Miscellaneous class variables
         self.steps_done = 0
-
         self.num_nodes = 11
         self.num_actions = action_space
-
         self.shape = (self.num_actions, 2)
         self.loss = 0
         self.q_values = np.zeros((132))
@@ -86,42 +117,28 @@ class DQNAgent():
         self.beta_by_frame = lambda frame_idx: min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
     
     def get_action(self, obs):
+        """
+        Handler method that gets an action from the QNetwork
+
+        @param obs The observation by the agent in everglades
+        """
         action = np.zeros(self.shape)
         obs = torch.from_numpy(obs).to(device)
-        # Added new style of exploration for testing
-        # Do not use
-        if self.exploration == "Boltzmann":
-            pass
-        elif self.exploration == "EPS":
-            action = self.epsilon_greedy(action, obs)
+        action = self.epsilon_greedy(action, obs)
         
-        return action
-    
-    def single_action(self, action, obs):
-        global steps_done
-        sample = random.random()
-        ### Updated the eps equation to be more readable (based on the pytorch implementation on 
-        # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
-        self.eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * np.exp(steps_done * -self.eps_decay)
-        ###
-        steps_done += 1
-
-        if sample > self.eps_threshold:
-            action_q = self.policy_net(obs).max(0)[1]
-            self.q_values = self.policy_net(obs)
-            chosen_unit = action_q // 12
-            chosen_node = action_q % 11
-            action[0,0] = chosen_unit
-            action[0,1] = chosen_node
-        else:
-            action[0, 0] = np.random.choice(self.num_groups, replace=False)
-            action[0, 1] = np.random.choice(self.num_nodes, replace=False)
-
         return action
 
     def epsilon_greedy(self, action, obs):
+        """
+        Gets an action according to the epsilon greedy approach
+
+        @param action The action array to store the chosen action in
+        @param obs The observatoin seen by the agent
+        """
+
         global steps_done
         sample = random.random()
+
         ### Updated the eps equation to be more readable (based on the pytorch implementation on 
         # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
         self.eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * np.exp(steps_done * -self.eps_decay)
@@ -129,16 +146,24 @@ class DQNAgent():
         steps_done += 1
 
         if sample > self.eps_threshold:
+            # Get greedy action
             action_qs = self.policy_net(obs)
             action = self.filter_actions(action, action_qs)
             self.q_values = action_qs
         else:
+            # Get random action
             action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
             action[:, 1] = np.random.choice(self.num_nodes, self.num_actions, replace=False)
 
         return action
 
     def filter_actions(self, action, action_qs):
+        """
+        Filter the actions to get the actions with the highest possible q-values
+
+        @param action The action array to store the chosen actions in
+        @param action_qs The q-values for each possible action
+        """
         with torch.no_grad():
             # Get the action_output from network and reshape to 2D tensor
             action_qs = torch.reshape(action_qs, (self.num_groups, self.num_nodes))
@@ -170,10 +195,31 @@ class DQNAgent():
             action[:, 1] = best_action_nodes
         return action
 
-    def update_batch(self):
-        self.batch_size += self.batch_update
+    def remember_game_state(self, observation = None, action = None, reward = None, next_observation = None):
+        """
+        Stores game state information in the agent's memory
+
+        @param observation The current observation seen by the agent
+        @param action The action the agent took
+        @param reward The reward the agent received
+        @param next_observation The enxt observation the agent has seen
+        """
+
+        batch_actions = np.zeros(7)
+
+        # Unwravel actions
+        for i in range(7):
+            batch_actions[i] = (action[i][0] * 11 + action[i][1])
+
+        self.memory.push(torch.from_numpy(observation), 
+                        torch.from_numpy(batch_actions), 
+                        torch.from_numpy(next_observation), 
+                        torch.from_numpy(np.asarray(reward)))
 
     def optimize_model(self):
+        """
+        Optimizes the DQN by taking a gradient step
+        """
         if len(self.memory) < self.batch_size:
             return
         transitions = self.memory.sample(self.batch_size)
@@ -193,7 +239,7 @@ class DQNAgent():
                                                 if s is not None])
         state_batch = torch.stack([s for s in batch.state])
         action_batch = torch.cat([s.unsqueeze(0) for s in batch.action])
-        reward_batch = torch.cat([s for s in batch.reward])
+        reward_batch = torch.cat([s.unsqueeze(0) for s in batch.reward])
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
@@ -245,6 +291,11 @@ class DQNAgent():
 
     
     def prioritized_optimize_model(self, i_episode):
+        """
+        Optimizes the loss using prioritized experience replay
+
+        @param i_episode The current episode number
+        """
         # Calculate the beta
         beta = self.beta_by_frame(i_episode)
         # Sample from the memory
@@ -285,148 +336,58 @@ class DQNAgent():
         self.loss = loss
     
     def update_target(self,episodes):
+        """
+        Updates the target network by copying in the weights of the policy network
+
+        @param episodes The current episode the agent is on
+        """
         # Updates the target model to reflect the current policy model
-         if episodes % self.target_update == 0:
+        if episodes % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
-    #######################################
-    # TODO: Internalized reward function  #
-    #######################################
-    def set_reward(self, obs):
-        if(not custom_reward):
-            return 0
-        return
-    #################################
-
-
-### DEFINE REPLAY MEMORY ###
-
-Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
-
-
-class ReplayMemory(object):
-    # Simple Replay Memory
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.memory = []
-        self.position = 0
-
-    def push(self, *args):
-        """Saves a transition."""
-        if len(self.memory) < self.capacity:
-            self.memory.append(None)
-        self.memory[self.position] = Transition(*args)
-        self.position = (self.position + 1) % self.capacity
-
-    def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
-
-    def __len__(self):
-        return len(self.memory)
-
-
-import gym
-import math
-import random
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-import json
-from collections import namedtuple
-from itertools import count
-from PIL import Image
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
-
-class QNetwork(nn.Module):
-    """ Actor (Policy) Model."""
-    def __init__(self,observation_size,action_size, seed, fc1_unit = 528,
-                 fc2_unit = 528):
+    def end_of_episode(self, episode):
         """
-        Initialize parameters and build model.
-        Params
-        =======
-            observation_size (int): Dimension of each state
-            action_size (int): Dimension of each action
-            seed (int): Random seed
-            fc1_unit (int): Number of nodes in first hidden layer
-            fc2_unit (int): Number of nodes in second hidden layer
+        Handles end of episode logic for the agent
+
+        @param episode The current episode the agent is on
         """
-        self.action_size = 12 * 11
-        super(QNetwork,self).__init__() ## calls __init__ method of nn.Module class
-        self.seed = torch.manual_seed(seed)
-        self.fc1 = nn.Linear(observation_size[0],fc1_unit)
+        # Handle end of episode logic
+        if self.train:
+            self.end_of_episode_train(episode)
         
-        #############################################################################################
-        #   Non-Dueling Architecture                                                                #
-        #############################################################################################
-        self.fc2 = nn.Linear(fc1_unit,self.action_size)
 
-        #############################################################################################
-
-        #############################################################################################
-        # Dueling Network Architecture                                                              #
-        # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
-        #############################################################################################
-
-        #self.fc2_adv = nn.Linear(fc1_unit,fc2_unit)
-        #self.fc2_val = nn.Linear(fc1_unit,fc2_unit)
-
-        #self.fc3_adv = nn.Linear(fc2_unit,self.action_size)
-        #self.fc3_val = nn.Linear(fc2_unit,1)
-
-        ##############################################################################################
-        
-    def forward(self,x):
-        # x = state
+    def end_of_episode_train(self, episode):
         """
-        Build a network that maps state -> action values.
+        Handles end of episode logic while agent is training
+
+        @param episode The current episode the agent is on
         """
-        #print("x: ", x)
-        #print("x-type", type(x))
-        if(type(x).__module__ == np.__name__):
-            x = torch.from_numpy(x).float()
-        
-        x = x.float()
-        
-        x = F.relu(self.fc1(x))
-        
-        #############################################################################################
-        #   Non-Dueling Architecture                                                                #
-        #############################################################################################
+        # Handle end of episode while training
+        if episode % self.save_after_episode == 0:
+            self.save_network(episode)
 
-        x = F.relu(self.fc2(x))
+    def save_network(self, episodes):
+        """
+        Saves the network's state dict, epsilon value, and episode count to the specified file.
 
-        #############################################################################################
-
-        #############################################################################################
-        # Dueling Network Architecture                                                              #
-        # Code based on dxyang DQN agent https://github.com/dxyang/DQN_pytorch/blob/master/model.py #
-        #############################################################################################
-        
-        #adv = F.relu(self.fc2_adv(x))
-        #val = F.relu(self.fc2_val(x))
-
-        #adv = self.fc3_adv(adv)
-        #val = self.fc3_val(val)
-
-        #advAverage = adv.mean()
-        #x = val + adv - advAverage
-
-       ##############################################################################################
-
-        return x
-   
-    def reset_noise(self):
-        self.fc1.reset_noise()
-        #self.fc2.reset_noise() # Non-dueling
-
-        self.fc2_adv.reset_noise()
-        self.fc2_val.reset_noise()
-        self.fc3_adv.reset_noise()
-        self.fc3_val.reset_noise()
+        @param episodes The number of episodes that have elapsed since the current training session began
+        """
+        if self.network_save_name:
+            save_file = open(self.network_save_name + '.pickle', 'wb')
+            pickle.dump({
+                'type': 'PPO',
+                'policy_old_state_dict': self.policy_old.state_dict(),
+                'policy_state_dict': self.policy.state_dict(),
+                'eps_start': self.eps_start,
+                'eps_end': self.eps_end,
+                'eps_decay': self.eps_decay,
+                'target_update': self.target_update,
+                'replay_size': self.replay_size,
+                'batch_size': self.batch_size,
+                'lr': self.lr,
+                'gamma': self.gamma
+            }, save_file)
+            save_file.close()
+            print('Saved Network')
+        else:
+            print('Save Failed - Save File Not Specified')

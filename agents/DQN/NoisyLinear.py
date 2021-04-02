@@ -6,7 +6,17 @@ from torch.nn import functional as F
 from torch.autograd import Variable
 
 class NoisyLinear(nn.Module):
+    """
+    Implementation of Noisy Networks using Linear layers
+    """
     def __init__(self, in_features, out_features, std_init=0.4):
+        """
+        Initializes a Noisy Linear layer
+
+        @param in_features The number of input features
+        @param out_features The number of output features
+        @param std_init The std_initial of the layer
+        """
         super(NoisyLinear, self).__init__()
         
         self.in_features  = in_features
