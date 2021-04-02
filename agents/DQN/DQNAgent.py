@@ -375,9 +375,9 @@ class DQNAgent():
         if self.network_save_name:
             save_file = open(self.network_save_name + '.pickle', 'wb')
             pickle.dump({
-                'type': 'PPO',
-                'policy_old_state_dict': self.policy_old.state_dict(),
-                'policy_state_dict': self.policy.state_dict(),
+                'type': 'DQN',
+                'policy_old_state_dict': self.policy_net.state_dict(),
+                'policy_state_dict': self.target_net.state_dict(),
                 'eps_start': self.eps_start,
                 'eps_end': self.eps_end,
                 'eps_decay': self.eps_decay,
