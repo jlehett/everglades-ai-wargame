@@ -149,7 +149,7 @@ class DQNAgent():
             # Get greedy action
             action_qs = self.policy_net(obs)
             action = self.filter_actions(action, action_qs)
-            self.q_values = action_qs
+            self.q_values = action_qs.detach()
         else:
             # Get random action
             action[:, 0] = np.random.choice(self.num_groups, self.num_actions, replace=False)
@@ -286,7 +286,7 @@ class DQNAgent():
         #self.target_net.reset_noise()
 
         # Sets the loss to be grabbed by training file
-        self.loss = loss
+        self.loss = loss.detach()
 
 
     
@@ -333,7 +333,7 @@ class DQNAgent():
         #self.target_net.reset_noise()
 
         # Sets the loss to be grabbed by training file
-        self.loss = loss
+        self.loss = loss.detach().numpy()
     
     def update_target(self,episodes):
         """
