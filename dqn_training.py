@@ -11,8 +11,12 @@ from collections import deque
 import numpy as np
 
 from everglades_server import server
-from agents.Rainbow.agent import DQNAgent
+from agents.Minimized.DQNAgent import DQNAgent
 from agents.State_Machine.random_actions_delay import random_actions_delay
+from agents.State_Machine.base_rush_v1 import base_rushV1
+
+DISPLAY = True # Set whether the visualizer should ever run
+TRAIN = False # Set whether the agent should learn or not
 
 #############################
 # Environment Config Setup  #
@@ -35,9 +39,12 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(player_num=0, map_name=map_file, observation_space = env.observation_space)
+players[0] = DQNAgent(
+    player_num=0,
+    map_name=map_name,
+    )
 names[0] = "DQN Agent"
-players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
+players[1] = base_rushV1(env.num_actions_per_turn, 1)
 names[1] = 'Random Agent Delay'
 #################
 
@@ -45,7 +52,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 1000
+n_episodes = 2
 
 #########################
 # Statistic variables   #
@@ -83,9 +90,10 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
+
     # Reset the reward average
     while not done:
-        if i_episode % 5 == 0:
+        if DISPLAY and i_episode % 5 == 0:
             env.render()
 
         # Get actions for each player
@@ -105,8 +113,7 @@ for i_episode in range(1, n_episodes+1):
             prev_observation,
             observations[0],
             actions[0],
-            reward[0],
-            done
+            reward[0]
         )
         players[0].optimize_model()
         #########################
@@ -117,7 +124,7 @@ for i_episode in range(1, n_episodes+1):
     ################################
     # End of episode agent updates #
     ################################
-    players[0].end_of_episode(i_episode, n_episodes)
+    players[0].end_of_episode(i_episode)
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
@@ -140,12 +147,12 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, ties), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
-        
+
     ################################
     env.close()
 
@@ -187,5 +194,3 @@ ax2.yaxis.label.set_color('blue')
 ax2.set_xlabel('Episode #')
 plt.show()
 #############################
-
-#########
