@@ -41,7 +41,7 @@ MEMORY_SIZE = constants.memory_size # The number of experiences to store in memo
 GAMMA = constants.gamma # The amount to discount the future rewards by
 LEARNING_RATE = constants.learning_rate # The learning rate to be used by the optimizer
 N_STEP = constants.n_step # The number of steps to use in multi-step learning
-EPS_DECAY = constants.eps_decay # The rate at which epsilon decays at the end of each episode
+EPS_DECAY = constants.epsilon_decay # The rate at which epsilon decays at the end of each episode
 
 # distributional
 V_MIN = constants.v_min
