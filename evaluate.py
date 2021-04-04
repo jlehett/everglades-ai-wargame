@@ -89,6 +89,7 @@ PLAYER_1_AGENT = AgentLoader.loadAgent(
 
 PLAYER_2_AGENT = loadStateMachine(
     selection='Base Rush V1',
+    selection='Swarm Agent',
     player_num=2
 )
 

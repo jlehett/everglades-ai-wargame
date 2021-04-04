@@ -6,17 +6,18 @@ import gym_everglades
 import pdb
 import sys
 import matplotlib.pyplot as plt
-from collections import deque 
+from collections import deque
+import torch
 
 import numpy as np
 
 from everglades_server import server
-from agents.Minimized.DQNAgent import DQNAgent
-from agents.State_Machine.random_actions_delay import random_actions_delay
-from agents.State_Machine.base_rush_v1 import base_rushV1
+from agents.DQN.DQNAgent import DQNAgent
+from agents.State_Machine.random_actions import random_actions
+from utils.reward_shaping import *
+from utils.Statistics import AgentStatistics
 
-DISPLAY = True # Set whether the visualizer should ever run
-TRAIN = False # Set whether the agent should learn or not
+from agents.DQN.render_dqn import render_charts
 
 #############################
 # Environment Config Setup  #
@@ -36,16 +37,44 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
+#########################
+#   Setup DQN Constants #
+#########################
+LR = 0.0001
+REPLAY_SIZE = 10000
+BATCH_SIZE = 128
+GAMMA = 0.99
+EPS_START = 0.9
+EPS_END = 0.01
+EPS_DECAY = 0.00001
+TARGET_UPDATE = 100 # 60 games approximately equal to ~10,000 time steps (what was used by Deepmind)
+NETWORK_SAVE_NAME = "saved-agents/dqn_new"
+SAVE_AFTER_EPISODE = 100
+DEVICE = "CPU"
+#########################
+
+DISPLAY = False
+TRAIN = True
+RENDER_CHARTS = True
+
 #################
 # Setup agents  #
 #################
-players[0] = DQNAgent(
-    player_num=0,
-    map_name=map_name,
-    train=TRAIN,
-    network_save_name='agents/Minimized/saved_models/new',
-    network_load_name='agents/Minimized/saved_models/new',
-)
+players[0] = DQNAgent(env.num_actions_per_turn, 
+                        env.observation_space,
+                        0,
+                        LR,
+                        REPLAY_SIZE,
+                        BATCH_SIZE,
+                        GAMMA,
+                        EPS_START,
+                        EPS_END,
+                        EPS_DECAY,
+                        TARGET_UPDATE, 
+                        DEVICE, 
+                        TRAIN, 
+                        SAVE_AFTER_EPISODE, 
+                        NETWORK_SAVE_NAME)
 names[0] = "DQN Agent"
 players[1] = base_rushV1(env.num_actions_per_turn, 1)
 names[1] = 'Random Agent Delay'
@@ -60,20 +89,20 @@ n_episodes = 5000
 #########################
 # Statistic variables   #
 #########################
-scores = []
 k = 100
+stats = AgentStatistics(names[0], n_episodes, k, save_file="saved-stats/dqn_new")
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
-short_term_scores = [0.5] # Average win rates per k episodes
+
 ties = 0
 losses = 0
 score = 0
-current_eps = 0
 
-epsilonVals = []
+current_eps = 0
 current_loss = 0
-lossVals = []
-average_reward = 0
-avgRewardVals = []
+q_values = 0
+
+reward = {0: 0, 1: 0}
+#########################
 
 #####################
 #   Training Loop   #
@@ -93,7 +122,7 @@ for i_episode in range(1, n_episodes+1):
         debug = debug
     )
 
-    # Reset the reward average
+    turnNum = 0
     while not done:
         if DISPLAY and i_episode % 5 == 0:
             env.render()
@@ -111,24 +140,26 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
-        players[0].remember_game_state(
-            prev_observation,
-            observations[0],
-            actions[0],
-            reward[0]
-        )
+        turn_scores = reward_short_games(0, reward, done, turnNum)
+
+        players[0].remember_game_state(prev_observation, actions[0], turn_Scores, observations[0])
+
+        # Handle end of game updates
+        if done:
+            players[0].end_of_episode(i_episode)
+        
         players[0].optimize_model()
         #########################
 
-        current_eps = players[0].epsilon
+        current_eps = players[0].eps_threshold
+        q_values += players[0].q_values.mean()
+        current_loss = players[0].loss
 
+        turnNum += 1
+    #####################
+    #   End Game Loop   #
+    #####################
 
-    ################################
-    # End of episode agent updates #
-    ################################
-    players[0].end_of_episode(i_episode)
-
-    ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
         score += 1
         short_term_wr[(i_episode-1)%k] = 1
@@ -136,65 +167,39 @@ for i_episode in range(1, n_episodes+1):
         ties += 1
     else:
         losses += 1
-    ###
 
     #############################################
     # Update Score statistics for final chart   #
     #############################################
-    scores.append(score / i_episode) ## save the most recent score
+    stats.scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
-    epsilonVals.append(current_eps)
+    stats.epsilons.append(current_eps)
+    stats.network_loss.append(current_loss)
+    q_values = q_values / 150
+    stats.q_values.append(q_values)
     #############################################
 
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f} Wins: {} Losses: {} Ties: {} Eps: {:.2f} Loss: {:.2f} Average Q-Value: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,q_values), end="")
     if i_episode % k == 0:
-        print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
-        short_term_scores.append(np.mean(short_term_wr))
+        print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
+        stats.short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
-        
+
     ################################
     env.close()
+    #########################
+    #   End Training Loop   #
+    #########################
 
-#####################
-# Plot final charts #
-#####################
-fig, (ax1, ax2) = plt.subplots(2)
+# Save final model state
+players[0].save_network(i_episode)
 
-#########################
-#   Epsilon Plotting    #
-#########################
-par1 = ax1.twinx()
-par2 = ax2.twinx()
-#########################
+# Render charts to show visual of training stats
+if RENDER_CHARTS:
+    render_charts(stats)
 
-######################
-#   Cumulative Plot  #
-######################
-ax1.set_ylim([0.0,1.0])
-fig.suptitle('Win rates')
-ax1.plot(np.arange(1, n_episodes+1),scores)
-ax1.set_ylabel('Cumulative win rate')
-ax1.yaxis.label.set_color('blue')
-par1.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par1.set_ylabel('Epsilon')
-par1.yaxis.label.set_color('green')
-#######################
-
-##################################
-#   Average Per K Episodes Plot  #
-##################################
-ax2.set_ylim([0.0,1.0])
-par2.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par2.set_ylabel('Epsilon')
-par2.yaxis.label.set_color('green')
-ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
-ax2.set_ylabel('Average win rate')
-ax2.yaxis.label.set_color('blue')
-ax2.set_xlabel('Episode #')
-plt.show()
-#############################
-
-#########
+# Save run stats
+stats.save_stats()

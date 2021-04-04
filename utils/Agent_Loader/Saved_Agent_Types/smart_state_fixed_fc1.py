@@ -44,7 +44,7 @@ class SmartStateFixedFC1():
         observation. Each unit swarm the agent controls should come up with their own
         Q values and best action to take. This function will take the 7 best actions
         that are returned among all unit swarms.
-
+        
         @param obs The observation array consisting of all 105 values passed by the Everglades environment
         @returns 7x2 Numpy array containing the best actions the agent has predicted
         """
@@ -99,7 +99,7 @@ class SmartStateFixedFC1():
         """
         We want each individual swarm to think about which action it could take
         that would be best, and report back to the hivemind its thought processes.
-
+        
         @param swarm_number The unit group number to have think
         @param obs The observation array consisting of all 105 values passed by the Everglades environment
         @param allies_on_node The number of allies on each node (nodes are 0-indexed)
@@ -131,7 +131,7 @@ class SmartStateFixedFC1():
     def create_swarm_obs(self, swarm_number, obs, allies_on_node):
         """
         Create the individual swarm's pre-processed input.
-
+        
         @param swarm_number The unit group number to create the pre-processed input for
         @param obs The observation array consisting of all 105 values passed by the Everlgades environment
         @param allies_on_node The number of allies on each node (nodes are 0-indexed)
@@ -165,7 +165,7 @@ class SmartStateFixedFC1():
     def get_swarm_node_number(self, swarm_number, obs):
         """
         Grab the node number that a swarm is at given the observation and swarm number.
-
+        
         @param swarm_number The swarm to query
         @param ibs The observation array consisting of all 105 values passed by the Everglades environment
         @returns An integer representing the node number the swarm is at in a 0-indexed system
@@ -295,7 +295,7 @@ def get_move(node_location_0_indexed, direction):
     """
     Helper function to determine where a swarm should move given
     its current location and the direction it should move.
-
+    
     @param node_location_0_indexed The location the swarm is currently
         at using a 0-indexed system
     @param direction The direction the swarm should move as an integer
@@ -304,4 +304,3 @@ def get_move(node_location_0_indexed, direction):
         system
     """
     return move_translator_total[int(direction)][int(node_location_0_indexed) + 1]
-        
