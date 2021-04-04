@@ -14,7 +14,7 @@ import numpy as np
 from everglades_server import server
 from agents.DQN.DQNAgent import DQNAgent
 from agents.State_Machine.random_actions import random_actions
-from agents.State_Machine.randoma_actions_delay import random_actions_delay
+from agents.State_Machine.random_actions_delay import random_actions_delay
 from utils.reward_shaping import *
 from utils.Statistics import AgentStatistics
 
