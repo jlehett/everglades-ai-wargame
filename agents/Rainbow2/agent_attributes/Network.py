@@ -16,6 +16,8 @@ from torch.nn.utils import clip_grad_norm_
 
 from agents.Rainbow2.agent_attributes.noisynet import NoisyLinear
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 class QNetwork(nn.Module):
     def __init__(
         self, 
@@ -48,7 +50,7 @@ class QNetwork(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward method implementation."""
         dist = self.dist(x)
-        q = torch.sum(dist * self.support, dim=2)
+        q = torch.sum(dist * self.support, dim=2).to(device)
         
         return q
     
