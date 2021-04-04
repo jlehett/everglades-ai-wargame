@@ -120,7 +120,10 @@ class EvergladesEnv(gym.Env):
         observations = self._build_observations()
         #pdb.set_trace()
 
-        self.renderer = EvergladesRenderer(self.game)
+        try: 
+            self.renderer = EvergladesRenderer(self.game)
+        except:
+            pass
 
         return observations
 

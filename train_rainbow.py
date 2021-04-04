@@ -77,7 +77,10 @@ for i_episode in range(1, n_episodes+1):
     # Reset the reward average
     while not done:
         if i_episode % 5 == 0:
-            env.render()
+            try:
+                env.render()
+            except:
+                pass
 
         # Get actions for each player
         for pid in players:
