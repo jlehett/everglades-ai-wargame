@@ -14,6 +14,7 @@ import numpy as np
 from everglades_server import server
 from agents.DQN.DQNAgent import DQNAgent
 from agents.State_Machine.random_actions import random_actions
+from agents.State_Machine.randoma_actions_delay import random_actions_delay
 from utils.reward_shaping import *
 from utils.Statistics import AgentStatistics
 
@@ -76,7 +77,7 @@ players[0] = DQNAgent(env.num_actions_per_turn,
                         SAVE_AFTER_EPISODE, 
                         NETWORK_SAVE_NAME)
 names[0] = "DQN Agent"
-players[1] = base_rushV1(env.num_actions_per_turn, 1)
+players[1] = random_actions_delay(env.num_actions_per_turn, 1)
 names[1] = 'Random Agent Delay'
 #################
 
