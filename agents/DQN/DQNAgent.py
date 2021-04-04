@@ -44,6 +44,7 @@ steps_done = 0
 custom_reward = False
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 #print(torch.cuda.version)
 
 class DQNAgent():
@@ -120,6 +121,7 @@ class DQNAgent():
         # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
         self.eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(steps_done * -EPS_DECAY)
         ###
+
         steps_done += 1
 
         if sample > self.eps_threshold:
@@ -170,10 +172,12 @@ class DQNAgent():
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
         batch = Transition(*zip(*transitions))
+
         # Compute a mask of non-final states and concatenate the batch elements
         # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                             batch.next_state)), device=device, dtype=torch.bool)
+
         non_final_next_states = torch.cat([torch.from_numpy(s) for s in batch.next_state
                                                 if s is not None])
         state_batch = torch.from_numpy(np.asarray(batch.state))
@@ -200,6 +204,7 @@ class DQNAgent():
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
+
         next_state_values[non_final_mask] = self.target_net(non_final_next_states.view(BATCH_SIZE,105)).max(1)[0].detach()
         
         # Compute the expected Q values
@@ -296,7 +301,7 @@ class QNetwork(nn.Module):
         super(QNetwork,self).__init__() ## calls __init__ method of nn.Module class
         self.seed = torch.manual_seed(seed)
         self.fc1 = nn.Linear(observation_size[0],fc1_unit)
-        
+
         #############################################################################################
         #   Non-Dueling Architecture                                                                #
         #############################################################################################
@@ -330,7 +335,7 @@ class QNetwork(nn.Module):
         
         x = x.float()
         x = F.relu(self.fc1(x))
-        
+
         #############################################################################################
         #   Non-Dueling Architecture                                                                #
         #############################################################################################

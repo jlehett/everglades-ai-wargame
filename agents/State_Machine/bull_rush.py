@@ -32,7 +32,7 @@ ENV_MAP = {
     'everglades-vision-stoch': 'EvergladesVisionStochastic-v0',
 }
 
-class all_cycle:
+class bull_rush:
     def __init__(self, action_space, player_num):
         self.action_space = action_space
         self.num_groups = NUM_GROUPS
@@ -54,6 +54,9 @@ class all_cycle:
         self.nodelen = len(NODE_CONNECTIONS)
         self.group_num = 1
         self.node_num = 2
+
+        self.node_strat = [2,5,8,11]
+        self.strat_index = 0
     # end __init__
 
     def get_action(self, obs):
@@ -68,21 +71,25 @@ class all_cycle:
         # The next line should really be 0, but there is an env bug that the agent doesn't get
         # to see the 0th observation to make it's first move; one turn gets blown
         if not self.first_turn:
-            action = self.act_all_cycle(action)
+            if self.strat_index == 8:
+                self.strat_index = 0
+            action = self.act_bull_rush(action)
         else:
             self.first_turn = False
         #print(action)
-        
+
+        #action[:,0] = [0,1,2,3,4,5,6]
+        #action[:,1] = [2,2,2,2,2,2,2]
         return action
     # end get_action
 
-    def act_all_cycle(self,actions=np.zeros((7,2))):
+    def act_bull_rush(self,actions=np.zeros((7,2))):
         for i in range(0,7):
-            actions[i] = [self.group_num, self.node_num]
+            index = self.strat_index // 2
+            actions[i] = [self.group_num, self.node_strat[index]]
             #self.group_num = ((self.group_num-1) + 1) % self.grouplen + 1
             self.group_num = (self.group_num + 1) % self.grouplen 
-            nodetest = ((self.node_num-1) + 1) % self.nodelen + 1
-            self.node_num = nodetest if self.group_num == 0 else self.node_num
+        self.strat_index += 1
         return actions
 
 # end class

@@ -18,7 +18,6 @@ class EvergladesGame:
         unit_file = kwargs.get('unit_file')
         self.debug = kwargs.get('debug', False)
         self.player_names = kwargs.get('pnames')
-        self.output_dir = kwargs.get('output_dir')
         #config_file = kwargs.get(
 
         # Initialize game
@@ -37,19 +36,6 @@ class EvergladesGame:
         else:
             # Exit with error
             pass
-
-        # Check output directory existance. Create if necessary
-        if not os.path.isdir(self.output_dir):
-            oldmask = os.umask(000)
-            os.mkdir(self.output_dir,mode=0o777)
-            os.umask(oldmask)
-        assert( os.path.isdir(self.output_dir) ), 'Output directory does not exist \
-                and could not be created'
-
-
-        # Initialize output arrays, to be written to file at game completion
-        # Needs the map name to be populated before initialization
-        self.output_init()
 
     def board_init(self,map_file):
         """ 
@@ -164,9 +150,6 @@ class EvergladesGame:
         # Cumulative unit number for output
         map_units = 1
 
-        if self.current_turn == 0:
-            self.write_output(None)
-
         for player in players:
             assert(player in self.team_starts), 'Given player number not included in map configuration file starting locations'
             start_node_idx = self.team_starts[player]
@@ -202,7 +185,6 @@ class EvergladesGame:
                                                                  map_units,
                                                                  in_count
                 )
-                self.output['GROUP_Initialization'].append(outstr)
                 map_gid += 1
                 map_units += in_count
 
@@ -282,8 +264,6 @@ class EvergladesGame:
                             'RDY_TO_MOVE'
                     )
                     
-                    self.output['GROUP_MoveUpdate'].append(outstr) 
-
                     self.players[player].groups[gid].ready = True
                     self.players[player].groups[gid].moving = False
                     self.players[player].groups[gid].travel_destination = nid
@@ -295,8 +275,6 @@ class EvergladesGame:
         self.movement()
         self.capture()
         self.build_knowledge_output()
-
-        self.write_output(None) # writes telemetry every turn
 
         return self.game_end() # returns scores and status
 
@@ -355,7 +333,6 @@ class EvergladesGame:
                     self.player_names[0],
                     self.player_names[1]
             )
-            self.output['PLAYER_Tags'].append(outstr) 
 
         if (self.current_turn % 10 == 0):
             self.focus = np.random.randint(self.total_groups)
@@ -367,10 +344,6 @@ class EvergladesGame:
                 status,
                 self.focus
         )
-        self.output['GAME_Scores'].append(outstr) 
-
-        if status != 0:
-            self.write_output(None)
 
         return scores, status
 
@@ -658,7 +631,6 @@ class EvergladesGame:
                                                 opp_pid,
                                                 self.players[opp_pid].groups[tgt_gid].mapGroupID
                                         )
-                                        self.output['GROUP_Disband'].append(outstr) 
                                 else:
                                     outhealth = tgt_armor * (tgt_unit.unitHealth[tgt_unit_idx] / 100.)
                                 outhealthstr = '{:.6f}'.format(float(outhealth))
@@ -680,12 +652,6 @@ class EvergladesGame:
                             ';'.join(str(i) for i in all_dmg[node.ID][opp_pid]['units']),
                             ';'.join(str(i) for i in all_dmg[node.ID][opp_pid]['health']),
                     )
-                    self.output['GROUP_CombatUpdate'].append(outstr) 
-                            
-                # end player loop
-                #pdb.set_trace()
-            # end if combat check
-        # end node loop
 
     def movement(self):
         ## Apply group movements
@@ -721,8 +687,6 @@ class EvergladesGame:
                                     self.evgMap.nodes[end_idx].ID,
                                     'ARRIVED'
                             )
-                            self.output['GROUP_MoveUpdate'].append(outstr) 
-
                             self.evgMap.nodes[start_idx].groups[player].remove(group.groupID)
                             self.evgMap.nodes[end_idx].groups[player].append(group.groupID)
                             group.distance_remaining = 0
@@ -740,11 +704,6 @@ class EvergladesGame:
                                     self.evgMap.nodes[end_idx].ID,
                                     'IN_TRANSIT'
                             )
-                            self.output['GROUP_MoveUpdate'].append(outstr) 
-
-                    # end move adjustments
-            # end group loop
-        # end player loop
 
     def capture(self):
         for node in self.evgMap.nodes:
@@ -799,58 +758,13 @@ class EvergladesGame:
                                 np.abs(node.controlState),
                                 fullctrl
                         )
-                        self.output['NODE_ControlUpdate'].append(outstr) 
-
+                    
                     # Update
                     if np.abs(node.controlState) >= node.controlPoints:
                         node.controlState = node.controlPoints * pxer
                         node.controlledBy = pid
                     if node.controlledBy != -1 and neutralize:
-                        #print('!!!!!!Neutralize!!!!!!!!')
-                        #print(node.controlledBy)
                         node.controlledBy = -1
-                        #print(node.controlledBy)
-                        #print()
-
-
-    def output_init(self):
-        # Output telemetry files
-        date = datetime.datetime.today()
-        date_frmt = date.strftime('%Y.%m.%d-%H.%M.%S')
-        self.dat_dir = self.output_dir + '/' + self.evgMap.name + '_' + date_frmt
-
-        oldmask = os.umask(000)
-        os.mkdir(self.dat_dir,mode=0o777)
-        os.umask(oldmask)
-        assert( os.path.isdir(self.dat_dir) ), 'Could not create telemetry output directory'
-
-        self.output = {}
-        hdr = '0,player1,player2,status,focus'
-        self.output['GAME_Scores'] = [hdr]
-
-        hdr = '0,player,node,groups,units,health'
-        self.output['GROUP_CombatUpdate'] = [hdr]
-
-        hdr = '0,player,group'
-        self.output['GROUP_Disband'] = [hdr]
-
-        hdr = '0,player,group,node,types,start,count'
-        self.output['GROUP_Initialization'] = [hdr]
-
-        hdr = '0,player,unitTypes,unitCount,status,node1,node2'
-        self.output['GROUP_Knowledge'] = [hdr]
-
-        hdr = '0,player,group,start,destination,status'
-        self.output['GROUP_MoveUpdate'] = [hdr]
-
-        hdr = '0,player,node,faction,controlvalue,controlled'
-        self.output['NODE_ControlUpdate'] = [hdr]
-
-        hdr = '0,player,nodes,knowledge,controller,percent'
-        self.output['NODE_Knowledge'] = [hdr]
-
-        hdr = '0,player1,player2'
-        self.output['PLAYER_Tags'] = [hdr]
 
     def build_knowledge_output(self):
         players = np.array( list(self.players.keys()) )
@@ -928,8 +842,7 @@ class EvergladesGame:
                                               ';'.join(str(i) for i in controller),
                                               ';'.join(str(i) for i in percent)
             )
-            self.output['NODE_Knowledge'].append(outstr)
-
+            
             # Group knowledge loop
             opp_k = {}  # player knowledge of enemy groups
 
@@ -992,35 +905,6 @@ class EvergladesGame:
                                 nid,
                                 dst
                         )
-                        self.output['GROUP_Knowledge'].append(outstr)
-                    # end destination key loop
-                # end node key loop
-            # end group knowledge outstring
-
-        # end player loop
-
-        
-    def write_output(self, sock):
-
-        for key in self.output.keys():
-            #pdb.set_trace()
-            key_dir = self.dat_dir + '/' + str(key)
-            oldmask = os.umask(000)
-            try:
-                os.mkdir(key_dir,mode=0o777)
-            except OSError:
-                pass
-                # do nothign file exists
-
-            os.umask(oldmask)
-            assert( os.path.isdir(key_dir) ), 'Could not create telemetry {} output directory'.format(key)
-
-            key_file = key_dir + '/' + 'Telem_' + key
-            with open(key_file, 'w') as fid:
-                writer = csv.writer(fid, delimiter='\n')
-                writer.writerow(self.output[key])
-
-        self.SendFilesReadyMsg(sock);
 
     def SendFilesReadyMsg(self, sock):
 

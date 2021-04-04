@@ -2,7 +2,6 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 from gym.spaces import Tuple, Discrete, Box
-
 import everglades_server.server as server
 
 try:
@@ -32,7 +31,7 @@ class EvergladesEnv(gym.Env):
         # Define the state space
         self.observation_space = self._build_observation_space()
 
-        return
+        self.viewer = None
 
     def step(self, actions):
 
@@ -64,7 +63,7 @@ class EvergladesEnv(gym.Env):
             # Another objective if its score is negative
             reward[0] = scores[0] / MAX_SCORE
             #reward_0 = reward[0]
-            #reward[1] = scores[1] / MAX_SCORE
+            reward[1] = scores[1] / MAX_SCORE
             #reward[0] -= reward[1]
             #reward[1] -= reward_0
             ######################################################
@@ -120,6 +119,8 @@ class EvergladesEnv(gym.Env):
         # Get first game state
         observations = self._build_observations()
         #pdb.set_trace()
+
+        self.renderer = EvergladesRenderer(self.game)
 
         return observations
 

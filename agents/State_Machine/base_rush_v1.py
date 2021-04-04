@@ -32,7 +32,7 @@ ENV_MAP = {
     'everglades-vision-stoch': 'EvergladesVisionStochastic-v0',
 }
 
-class all_cycle:
+class base_rushV1:
     def __init__(self, action_space, player_num):
         self.action_space = action_space
         self.num_groups = NUM_GROUPS
@@ -54,6 +54,9 @@ class all_cycle:
         self.nodelen = len(NODE_CONNECTIONS)
         self.group_num = 1
         self.node_num = 2
+        
+        
+        self.group_location=[1,1,1,1,1,1,1,1,1,1,1,1]
     # end __init__
 
     def get_action(self, obs):
@@ -64,7 +67,7 @@ class all_cycle:
         #    print(obs[i:i+5])
         #print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
         action = np.zeros(self.shape)
-
+        self.update_locations(obs)
         # The next line should really be 0, but there is an env bug that the agent doesn't get
         # to see the 0th observation to make it's first move; one turn gets blown
         if not self.first_turn:
@@ -77,12 +80,33 @@ class all_cycle:
     # end get_action
 
     def act_all_cycle(self,actions=np.zeros((7,2))):
+        
+        self.get_location(2)    
         for i in range(0,7):
-            actions[i] = [self.group_num, self.node_num]
-            #self.group_num = ((self.group_num-1) + 1) % self.grouplen + 1
-            self.group_num = (self.group_num + 1) % self.grouplen 
-            nodetest = ((self.node_num-1) + 1) % self.nodelen + 1
-            self.node_num = nodetest if self.group_num == 0 else self.node_num
+            if self.get_location(i) != 11.0:
+                actions[i] = [self.group_num, self.node_num]
+            
+                #self.group_num = ((self.group_num-1) + 1) % self.grouplen + 1
+                self.group_num = (self.group_num + 1) % self.grouplen 
+                nodetest = ((self.node_num-1) + 1) % self.nodelen + 1
+                self.node_num = nodetest if self.group_num == 0 else self.node_num
+        #print('---------')
+        #print(actions)
+        #print('---------')
         return actions
-
+    def update_locations(self,obs):
+        i = 45
+        index = 0
+        while i < 105:
+            #self.army[index].pos = obs[i]
+            self.group_location[index]=obs[i]
+            #print('::::::::::  ',index,'>>>>>>>>>>>>',obs[i])
+            #self.army[index].type = obs[i+1]
+            #self.army[index].tran = obs[i+3]
+            #print(self.army[index])
+            i = i + 5
+            index = index + 1
+    def get_location(self,group_number):
+        #print(self.group_location)
+        return self.group_location[group_number]
 # end class
