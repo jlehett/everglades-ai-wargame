@@ -77,7 +77,7 @@ players[0] = DQNAgent(env.num_actions_per_turn,
                         SAVE_AFTER_EPISODE, 
                         NETWORK_SAVE_NAME)
 names[0] = "DQN Agent"
-players[1] = random_actions_delay(env.num_actions_per_turn, 1)
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent Delay'
 #################
 
@@ -143,7 +143,7 @@ for i_episode in range(1, n_episodes+1):
         #########################
         turn_scores = reward_short_games(0, reward, done, turnNum)
 
-        players[0].remember_game_state(prev_observation, actions[0], turn_Scores, observations[0])
+        players[0].remember_game_state(prev_observation, actions[0], turn_scores, observations[0])
 
         # Handle end of game updates
         if done:
