@@ -76,6 +76,8 @@ class DQNAgent():
         self.previous_episodes = 0
         self.training = self.train
 
+        self.loss = 0
+
         # Load save information if it exists
         save_file_data = None
         if self.network_load_name and os.path.exists(self.network_load_name + '.pickle'):
@@ -378,6 +380,9 @@ class DQNAgent():
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
+
+        # Sets the loss to be grabbed by training file
+        self.loss = loss.detach().numpy()
 
     def end_of_episode(self, episodes):
         """

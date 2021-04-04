@@ -14,6 +14,7 @@ from statsmodels.stats.proportion import proportion_confint
 import numpy as np
 
 import utils.reward_shaping as reward_shaping
+from utils.Statistics import AgentStatistics
 
 from everglades_server import server
 from agents.Smart_State.DQNAgent import DQNAgent
@@ -22,8 +23,11 @@ from agents.State_Machine.random_actions import random_actions
 from agents.State_Machine.base_rush_v1 import base_rushV1
 from agents.State_Machine.cycle_target_node11P2 import cycle_targetedNode11P2
 
-DISPLAY = True # Set whether the visualizer should ever run
-TRAIN = False # Set whether the agent should learn or not
+from agents.Smart_State.render_smart_state import render_charts
+
+DISPLAY = False # Set whether the visualizer should ever run
+TRAIN = True # Set whether the agent should learn or not
+RENDER_CHARTS = False # Set whether the training charts should be displayed after training
 
 #############################
 # Environment Config Setup  #
@@ -50,7 +54,7 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=TRAIN,
-    network_save_name=None,
+    network_save_name='./agents/Smart_State/saved_models/newton',
     network_load_name=None,
 )
 names[0] = "DQN Agent"
@@ -62,25 +66,24 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 5000
+n_episodes = 20000
 
 #########################
 # Statistic variables   #
 #########################
-scores = []
 k = 100
+stats = AgentStatistics(names[0], n_episodes, k, save_file='./saved-stats/smart_state_newton')
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
-short_term_scores = [0.5] # Average win rates per k episodes
+
 ties = 0
 losses = 0
 score = 0
-current_eps = 0
 
-epsilonVals = []
+current_eps = 0
 current_loss = 0
-lossVals = []
-average_reward = 0
-avgRewardVals = []
+q_values = 0
+
+reward = {0: 0, 1: 0}
 
 #####################
 #   Training Loop   #
@@ -99,8 +102,8 @@ for i_episode in range(1, n_episodes+1):
         pnames = names,
         debug = debug
     )
-    turn_num = 0
 
+    turn_num = 0
     # Reset the reward average
     while not done:
         if DISPLAY:
@@ -121,16 +124,19 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
+        turn_scores = reward_shaping.reward_short_games(0, reward, done, turn_num)
+
         players[0].remember_game_state(
             prev_observation,
             observations[0],
             directions,
-            reward_shaping.reward_short_games(0, reward, done, turn_num)
+            turn_scores
         )
         players[0].optimize_model()
         #########################
 
         current_eps = players[0].epsilon
+        current_loss = players[0].loss
 
         # Increment the turn number
         turn_num += 1
@@ -154,9 +160,15 @@ for i_episode in range(1, n_episodes+1):
     #############################################
     # Update Score statistics for final chart   #
     #############################################
-    scores.append(score / i_episode) ## save the most recent score
+    if TRAIN:
+        stats.scores.append(score / i_episode)
+        current_Wr = score / i_episode
+        stats.epsilons.append(current_eps)
+        stats.network_loss.append(current_loss)
+        q_values = 0
+        stats.q_values.append(q_values)
+
     current_wr = score / i_episode
-    epsilonVals.append(current_eps)
     #############################################
 
     #################################
@@ -166,7 +178,7 @@ for i_episode in range(1, n_episodes+1):
         print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
         if i_episode % k == 0:
             print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
-            short_term_scores.append(np.mean(short_term_wr))
+            stats.short_term_scores.append(np.mean(short_term_wr))
             short_term_wr = np.zeros((k,), dtype=int)
     else:
         confint = proportion_confint(score, i_episode, 0.05, 'normal')
@@ -179,43 +191,12 @@ for i_episode in range(1, n_episodes+1):
     ################################
     env.close()
 
-#####################
-# Plot final charts #
-#####################
-fig, (ax1, ax2) = plt.subplots(2)
+# Save final model state
+players[0].save_network(i_episode)
 
-#########################
-#   Epsilon Plotting    #
-#########################
-par1 = ax1.twinx()
-par2 = ax2.twinx()
-#########################
+# Render charts to show visual of training stats
+if RENDER_CHARTS:
+    render_charts(stats)
 
-######################
-#   Cumulative Plot  #
-######################
-ax1.set_ylim([0.0,1.0])
-fig.suptitle('Win rates')
-ax1.plot(np.arange(1, n_episodes+1),scores)
-ax1.set_ylabel('Cumulative win rate')
-ax1.yaxis.label.set_color('blue')
-par1.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par1.set_ylabel('Epsilon')
-par1.yaxis.label.set_color('green')
-#######################
-
-##################################
-#   Average Per K Episodes Plot  #
-##################################
-ax2.set_ylim([0.0,1.0])
-par2.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par2.set_ylabel('Epsilon')
-par2.yaxis.label.set_color('green')
-ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
-ax2.set_ylabel('Average win rate')
-ax2.yaxis.label.set_color('blue')
-ax2.set_xlabel('Episode #')
-plt.show()
-#############################
-
-#########
+# Save run stats
+stats.save_stats()
