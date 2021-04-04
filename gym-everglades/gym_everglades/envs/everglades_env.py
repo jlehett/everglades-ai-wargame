@@ -131,7 +131,10 @@ class EvergladesEnv(gym.Env):
         self.renderer.render(mode)
 
     def close(self):
-        self.renderer.close()
+        try:
+            self.renderer.close()
+        except:
+            pass
 
     def _build_observation_space(self):
         group_low = np.array([1, 0, 0, 0, 0])  # node loc, class, avg health, in transit, num units rem
