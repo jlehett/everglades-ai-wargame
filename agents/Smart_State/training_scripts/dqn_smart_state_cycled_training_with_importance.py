@@ -1,5 +1,7 @@
 ## Static Imports
-import os
+import os, sys
+sys.path.insert(0, '.')
+
 import importlib
 import gym
 import gym_everglades
@@ -62,8 +64,8 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=TRAIN,
-    network_save_name='agents/Smart_State/saved_models/cycled',
-    network_load_name='agents/Smart_State/saved_models/cycled',
+    network_save_name=None,
+    network_load_name=None,
 )
 names[0] = "DQN Agent"
 

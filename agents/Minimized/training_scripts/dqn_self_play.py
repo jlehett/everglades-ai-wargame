@@ -1,5 +1,7 @@
 ## Static Imports
-import os
+import os, sys
+sys.path.insert(0, '.')
+
 import importlib
 import gym
 import gym_everglades
@@ -38,16 +40,16 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=True,
-    network_save_name='agents/Minimized/saved_models/self-player-0',
-    network_load_name='agents/Minimized/saved_models/self-player-0',
+    network_save_name='./agents/Minimized/saved_models/self-player-0',
+    network_load_name='./agents/Minimized/saved_models/self-player-0',
 )
 names[0] = "DQN Agent - Player 0"
 players[1] = DQNAgent(
     player_num=1,
     map_name=map_name,
     train=True,
-    network_save_name='agents/Minimized/saved_models/self-player-1',
-    network_load_name='agents/Minimized/saved_models/self-player-1',
+    network_save_name='./agents/Minimized/saved_models/self-player-1',
+    network_load_name='./agents/Minimized/saved_models/self-player-1',
 )
 names[1] = "DQN Agent - Player 1"
 #################

@@ -1,5 +1,7 @@
 ## Static Imports
-import os
+import os, sys
+sys.path.insert(0, '.')
+
 import gym
 import gym_everglades
 import sys
@@ -69,7 +71,7 @@ ACTION_DIM = 132
 OBSERVATION_DIM = 105
 UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
-NETWORK_SAVE_NAME = "saved-agents/rppo_new"
+NETWORK_SAVE_NAME = "./agents/PPO/saved_models/rppo_new"
 SAVE_AFTER_EPISODE = 100
 USE_RECURRENT = True
 TRAIN = True

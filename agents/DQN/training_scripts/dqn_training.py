@@ -1,5 +1,7 @@
 ## Static Imports
-import os
+import os, sys
+sys.path.insert(0, '.')
+
 import importlib
 import gym
 import gym_everglades
@@ -49,7 +51,7 @@ EPS_START = 0.9
 EPS_END = 0.01
 EPS_DECAY = 0.00001
 TARGET_UPDATE = 100 # 60 games approximately equal to ~10,000 time steps (what was used by Deepmind)
-NETWORK_SAVE_NAME = "saved-agents/dqn_new"
+NETWORK_SAVE_NAME = "./agents/DQN/saved_models/dqn_new"
 SAVE_AFTER_EPISODE = 100
 DEVICE = "CPU"
 #########################

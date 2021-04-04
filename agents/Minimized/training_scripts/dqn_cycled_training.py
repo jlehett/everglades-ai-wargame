@@ -1,20 +1,35 @@
 ## Static Imports
-import os
+import os, sys
+sys.path.insert(0, '.')
+
 import importlib
 import gym
 import gym_everglades
 import pdb
 import sys
 import matplotlib.pyplot as plt
-from collections import deque
+from collections import deque 
 import random
 
 import numpy as np
 
 from everglades_server import server
 from agents.Minimized.DQNAgent import DQNAgent
-
-NUM_AGENTS_PER_TEAM = 4
+from agents.State_Machine.random_actions_delay import random_actions_delay
+from agents.State_Machine.random_actions import random_actions
+from agents.State_Machine.bull_rush import bull_rush
+from agents.State_Machine.all_cycle import all_cycle
+from agents.State_Machine.base_rush_v1 import base_rushV1
+from agents.State_Machine.cycle_rush_turn25 import Cycle_BRush_Turn25
+from agents.State_Machine.cycle_rush_turn50 import Cycle_BRush_Turn50
+from agents.State_Machine.cycle_target_node import Cycle_Target_Node
+from agents.State_Machine.cycle_target_node1 import cycle_targetedNode1
+from agents.State_Machine.cycle_target_node11 import cycle_targetedNode11
+from agents.State_Machine.cycle_target_node11P2 import cycle_targetedNode11P2
+from agents.State_Machine.random_actions_2 import random_actions_2
+from agents.State_Machine.same_commands_2 import same_commands_2
+from agents.State_Machine.same_commands import same_commands
+from agents.State_Machine.swarm_agent import SwarmAgent
 
 #############################
 # Environment Config Setup  #
@@ -37,30 +52,79 @@ names = {}
 #################
 # Setup agents  #
 #################
-team0 = []
-team1 = []
-for i in range(1, NUM_AGENTS_PER_TEAM+1):
-    team0.append(
-        DQNAgent(
-            player_num=0,
-            map_name=map_name,
-            train=True,
-            network_save_name='agents/Minimized/saved_models/self-player-0-' + str(i),
-            network_load_name='agents/Minimized/saved_models/self-player-0-' + str(i),
-        )
-    )
-    team1.append(
-        DQNAgent(
-            player_num=1,
-            map_name=map_name,
-            train=True,
-            network_save_name='agents/Minimized/saved_models/self-player-1-' + str(i),
-            network_load_name='agents/Minimized/saved_models/self-player-1-' + str(i),
-        )
-    )
+players[0] = DQNAgent(
+    player_num=0,
+    map_name=map_name,
+    train=False,
+    network_save_name=None,
+    network_load_name=None,
+)
+names[0] = "DQN Agent"
 
-names[0] = "DQN Agent - Player 0"
-names[1] = "DQN Agent - Player 1"
+# Create an array of all agents that could be used during training
+opposing_agents = [
+    {
+        'name': 'Random Agent Delay',
+        'agent': random_actions_delay(env.num_actions_per_turn, 1, map_name)
+    },
+    {
+        'name': 'Random Agent',
+        'agent': random_actions(env.num_actions_per_turn, 1, map_name)
+    },
+    {
+        'name': 'Bull Rush',
+        'agent': bull_rush(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'All Cycle',
+        'agent': all_cycle(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Base Rush v1',
+        'agent': base_rushV1(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Cycle Rush Turn 25',
+        'agent': Cycle_BRush_Turn25(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Cycle Rush Turn 50',
+        'agent': Cycle_BRush_Turn50(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Cycle Target Node',
+        'agent': Cycle_Target_Node(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Cycle Targeted Node 1',
+        'agent': cycle_targetedNode1(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Cycle Targeted Node 11',
+        'agent': cycle_targetedNode11(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Cycle Target Node 11 P2',
+        'agent': cycle_targetedNode11P2(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Random Actions 2',
+        'agent': random_actions_2(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Same Commands 2',
+        'agent': same_commands_2(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Same Commands',
+        'agent': same_commands(env.num_actions_per_turn, 1)
+    },
+    {
+        'name': 'Swarm Agent',
+        'agent': SwarmAgent(env.num_actions_per_turn, 1)
+    }
+]
+
 #################
 
 actions = {}
@@ -91,9 +155,13 @@ avgRewardVals = []
 #   Training Loop   #
 #####################
 for i_episode in range(1, n_episodes+1):
-    # Pick random agents from each team to compete
-    players[0] = random.choice(team0)
-    players[1] = random.choice(team1)
+    # Determine the opposing agent to play against
+    episode_opposing_agent = random.choice(opposing_agents)
+
+    # Set the opposing agent for the episode
+    players[1] = episode_opposing_agent['agent']
+    names[1] = episode_opposing_agent['name']
+    print(names[1])
 
     #################
     #   Game Loop   #
@@ -118,10 +186,8 @@ for i_episode in range(1, n_episodes+1):
         for pid in players:
             actions[pid] = players[pid].get_action( observations[pid] )
 
-        # Grab previous observation for agent
-        prev_observations = [None, None]
-        prev_observations[0] = observations[0]
-        prev_observations[1] = observations[1]
+        # Grab previos observation for agent
+        prev_observation = observations[0]
 
         # Update env
         observations, reward, done, info = env.step(actions)
@@ -130,20 +196,12 @@ for i_episode in range(1, n_episodes+1):
         # Handle agent update   #
         #########################
         players[0].remember_game_state(
-            prev_observations[0],
+            prev_observation,
             observations[0],
             actions[0],
             reward[0]
         )
         players[0].optimize_model()
-
-        players[1].remember_game_state(
-            prev_observations[1],
-            observations[1],
-            actions[1],
-            reward[1]
-        )
-        players[1].optimize_model()
         #########################
 
         current_eps = players[0].epsilon
@@ -152,16 +210,7 @@ for i_episode in range(1, n_episodes+1):
     ################################
     # End of episode agent updates #
     ################################
-    for agent in team0:
-        if agent == players[0]:
-            agent.end_of_episode(i_episode)
-        else:
-            agent.end_of_episode_not_play(i_episode)
-    for agent in team1:
-        if agent == players[1]:
-            agent.end_of_episode(i_episode)
-        else:
-            agent.end_of_episode_not_play(i_episode)
+    players[0].end_of_episode(i_episode)
 
     ### Updated win calculator to reflect new reward system
     if(reward[0] > reward[1]):
@@ -184,7 +233,7 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
+    print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Epsilon: {:.2f} Ties: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, ties), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
         short_term_scores.append(np.mean(short_term_wr))
