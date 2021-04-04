@@ -84,8 +84,11 @@ class DQNAgent():
         self.support = torch.linspace(V_MIN, V_MAX, FC1_SIZE).to(device)
         self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
         self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
-        self.policy_net.to(device)
-        self.target_net.to(device)
+        try:
+            self.policy_net.cuda()
+            self.target_net.cuda()
+        except:
+            pass
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
         self.update_count = 0
@@ -173,8 +176,8 @@ class DQNAgent():
         #    print('Swarm: ' + str(decision['best_action'][0]) + '\t| Node: ' + str(decision['best_action'][1]) + '\t| Q-value: ' + str(decision['best_q_value'].item()))
         #print('')
         # Return the top 7 actions
-        actions = np.zeros(EVERGLADES_ACTION_SIZE)
-        actions[:] = [decision['best_action'] for decision in sorted_swarm_decisions[:7]]
+        actions = np.zeros(EVERGLADES_ACTION_SIZE).cpu()
+        actions[:] = [decision['best_action'] for decision in sorted_swarm_decisions[:7]].cpu()
         return actions
 
     def get_allies_on_node_data(self, obs):
