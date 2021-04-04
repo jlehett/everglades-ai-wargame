@@ -2,7 +2,7 @@
   "game_setup":{
     "player0": "agent.py",
     "player1": "./State_Machine/random_actions.py",
-    "n_episodes": 5000
+    "n_episodes": 10
   },
   "memory": {
     "network_save_name": "/agents/Rainbow2/data/rainbow_default",
