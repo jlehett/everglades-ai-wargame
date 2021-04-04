@@ -336,7 +336,7 @@ class DQNAgent():
         #print(self.policy_net(swarm_state_batch).shape)
 
         # Compute the swarm's predicted qs for the current state
-        state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
+        state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch).to(device)
 
         # Compute the swarm's future value for next states
         next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
