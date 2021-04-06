@@ -229,14 +229,15 @@ class DQNAgent():
         """
         # Create the pre-processed observation space for the individual swarm
         swarm_obs = self.create_swarm_obs(swarm_number, obs, allies_on_node)
-        swarm_obs = torch.from_numpy(swarm_obs)
+        swarm_obs = torch.from_numpy(swarm_obs).to(device)
         # Find the predicted Q values for the swarm for all 12 possible actions
         with torch.no_grad():
             swarm_predicted_q = self.policy_net(swarm_obs)
         # Find the best predicted node
         best_node = torch.argmax(swarm_predicted_q) + 1
+        best_node.to(device)
         # Find the best predicted q value
-        best_q_value = torch.max(swarm_predicted_q)
+        best_q_value = torch.max(swarm_predicted_q).to(device)
         # Create the swarm thought processes object to return
         swarm_thought_processes = {
             'best_action': np.array([swarm_number, best_node]),
