@@ -6,6 +6,8 @@ from torch.nn import functional as F
 from torch.autograd import Variable
 import numpy as np
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 class NoisyLinear(nn.Module):
     """Noisy linear module for NoisyNet.
     
@@ -35,17 +37,17 @@ class NoisyLinear(nn.Module):
         self.out_features = out_features
         self.std_init = std_init
 
-        self.weight_mu = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.weight_mu = nn.Parameter(torch.Tensor(out_features, in_features).to(device))
         self.weight_sigma = nn.Parameter(
-            torch.Tensor(out_features, in_features)
+            torch.Tensor(out_features, in_features).to(device)
         )
         self.register_buffer(
-            "weight_epsilon", torch.Tensor(out_features, in_features)
+            "weight_epsilon", torch.Tensor(out_features, in_features).to(device)
         )
 
-        self.bias_mu = nn.Parameter(torch.Tensor(out_features))
-        self.bias_sigma = nn.Parameter(torch.Tensor(out_features))
-        self.register_buffer("bias_epsilon", torch.Tensor(out_features))
+        self.bias_mu = nn.Parameter(torch.Tensor(out_features).to(device))
+        self.bias_sigma = nn.Parameter(torch.Tensor(out_features).to(device))
+        self.register_buffer("bias_epsilon", torch.Tensor(out_features).to(device))
 
         self.reset_parameters()
         self.reset_noise()
@@ -90,6 +92,6 @@ class NoisyLinear(nn.Module):
     @staticmethod
     def scale_noise(size: int) -> torch.Tensor:
         """Set scale to make noise (factorized gaussian noise)."""
-        x = torch.FloatTensor(np.random.normal(loc=0.0, scale=1.0, size=size))
+        x = torch.FloatTensor(np.random.normal(loc=0.0, scale=1.0, size=size)).to(device)
 
         return x.sign().mul(x.abs().sqrt())

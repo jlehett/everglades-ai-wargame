@@ -82,8 +82,8 @@ class DQNAgent():
 
         # Set up the network
         self.support = torch.linspace(V_MIN, V_MAX, FC1_SIZE).to(device)
-        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support).cuda()
-        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support).cuda()
+        self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
+        self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
         try:
             self.policy_net.cuda()
             self.target_net.cuda()
