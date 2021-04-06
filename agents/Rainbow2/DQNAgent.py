@@ -326,13 +326,13 @@ class DQNAgent():
 
         # Create the batch of data to use
         batch = Transition(*zip(*transitions))
-        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
+        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms)).to(device)
         swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs)).to(device)
         swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1).to(device)
-        reward_batch = torch.from_numpy(np.asarray(batch.reward))
+        reward_batch = torch.from_numpy(np.asarray(batch.reward)).to(device)
         # Compute a mask of non-final states and concatenate the batch elements
         non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone)).to(device)
-        non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :]
+        non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :].to(device)
 
         #print(swarm_state_batch.shape)
         #print(swarm_action_batch.shape)
