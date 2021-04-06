@@ -3,10 +3,12 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 from gym.spaces import Tuple, Discrete, Box
 import everglades_server.server as server
+
 try:
     from gym_everglades.envs.everglades_renderer import EvergladesRenderer
 except:
     pass
+
 import numpy as np
 import pdb
 
@@ -132,7 +134,7 @@ class EvergladesEnv(gym.Env):
             self.renderer.close()
         except:
             pass
-        
+
     def _build_observation_space(self):
         group_low = np.array([1, 0, 0, 0, 0])  # node loc, class, avg health, in transit, num units rem
         group_high = np.array([self.num_nodes, len(self.unit_classes), 100, 1, self.num_units])
