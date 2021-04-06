@@ -103,6 +103,11 @@ class DQNAgent():
         # Set up the network
         self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size, self.fc2_size)
         self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size, self.fc2_size)
+        try:
+            policy_net.cuda()
+            target_net.cuda()
+        except:
+            pass
 
         # Load up the save policy network data if it exists
         if save_file_data:
@@ -250,12 +255,12 @@ class DQNAgent():
         with torch.no_grad():
             swarm_predicted_q = self.policy_net(swarm_obs)
         # Find the best predicted direction
-        best_direction = torch.argmax(swarm_predicted_q)
+        best_direction = torch.argmax(swarm_predicted_q).to(device)
         # Use the Move_Translation helper file to get the move the swarm would take by going in that direction
         swarm_node = self.get_swarm_node_number(swarm_number, obs)
         best_node = get_move(swarm_node, best_direction)
         # Find the best predicted q value
-        best_q_value = torch.max(swarm_predicted_q)
+        best_q_value = torch.max(swarm_predicted_q).to(device)
         # Create the swarm thought processes object to return
         swarm_thought_processes = {
             'best_direction': np.array([swarm_number, best_direction]),
@@ -352,29 +357,29 @@ class DQNAgent():
 
         # Create the batch of data to use
         batch = Transition(*zip(*transitions))
-        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
-        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs))
-        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1)
-        reward_batch = torch.from_numpy(np.asarray(batch.reward))
+        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms)).to(device)
+        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs)).to(device)
+        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1).to(device)
+        reward_batch = torch.from_numpy(np.asarray(batch.reward)).to(device)
         # Compute a mask of non-final states and concatenate the batch elements
-        non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone))
+        non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone)).to(device)
         non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :]
 
         # Compute the swarm's predicted qs for the current state
         state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
 
         # Compute the swarm's future value for next states
-        next_state_swarms_predicted_qs_batch = torch.zeros((self.batch_size, 12, OUTPUT_SIZE), device=device)
+        next_state_swarms_predicted_qs_batch = torch.zeros((self.batch_size, 12, OUTPUT_SIZE), device=device).to(device)
         for swarm_num in range(NUM_GROUPS):
             next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
         # Limit future value to the best q value for each swarm
-        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2)
-        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1)
+        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2).to(device)
+        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1).to(device)
         # Compute the estimated future reward
         estimated_future_reward = (max_next_state_predicted_q_batch * (self.gamma ** self.n_step) + reward_batch).to(device)
 
         # Compute the loss
-        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
+        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1)).to(device)
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.policy_net.parameters():

@@ -23,7 +23,10 @@ from agents.State_Machine.random_actions import random_actions
 from agents.State_Machine.base_rush_v1 import base_rushV1
 from agents.State_Machine.cycle_target_node11P2 import cycle_targetedNode11P2
 
-from agents.Smart_State.render_smart_state import render_charts
+try:
+    from agents.Smart_State.render_smart_state import render_charts
+except:
+    pass
 
 DISPLAY = False # Set whether the visualizer should ever run
 TRAIN = True # Set whether the agent should learn or not
