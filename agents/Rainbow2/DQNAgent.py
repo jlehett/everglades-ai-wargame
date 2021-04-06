@@ -85,6 +85,7 @@ class DQNAgent():
         self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
         self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, FC1_SIZE, self.support)
         try:
+            print('here')
             self.policy_net.cuda()
             self.target_net.cuda()
         except:
@@ -229,15 +230,14 @@ class DQNAgent():
         """
         # Create the pre-processed observation space for the individual swarm
         swarm_obs = self.create_swarm_obs(swarm_number, obs, allies_on_node)
-        swarm_obs = torch.from_numpy(swarm_obs).to(device)
+        swarm_obs = torch.from_numpy(swarm_obs)
         # Find the predicted Q values for the swarm for all 12 possible actions
         with torch.no_grad():
             swarm_predicted_q = self.policy_net(swarm_obs)
         # Find the best predicted node
         best_node = torch.argmax(swarm_predicted_q) + 1
-        best_node.to(device)
         # Find the best predicted q value
-        best_q_value = torch.max(swarm_predicted_q).to(device)
+        best_q_value = torch.max(swarm_predicted_q)
         # Create the swarm thought processes object to return
         swarm_thought_processes = {
             'best_action': np.array([swarm_number, best_node]),
@@ -326,12 +326,12 @@ class DQNAgent():
 
         # Create the batch of data to use
         batch = Transition(*zip(*transitions))
-        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms)).to(device)
-        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs)).to(device)
-        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1).to(device)
-        reward_batch = torch.from_numpy(np.asarray(batch.reward)).to(device)
+        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
+        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs))
+        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1)
+        reward_batch = torch.from_numpy(np.asarray(batch.reward))
         # Compute a mask of non-final states and concatenate the batch elements
-        non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone)).to(device)
+        non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone))
         non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :]
 
         #print(swarm_state_batch.shape)
@@ -346,8 +346,8 @@ class DQNAgent():
         for swarm_num in range(NUM_GROUPS):
             next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
         # Limit future value to the best q value for each swarm
-        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2).to(device)
-        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1).to(device)
+        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2)
+        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1)
         # Compute the estimated future reward
         estimated_future_reward = (max_next_state_predicted_q_batch * (GAMMA ** N_STEP) + reward_batch).to(device)
 
