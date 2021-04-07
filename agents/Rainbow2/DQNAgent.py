@@ -326,12 +326,12 @@ class DQNAgent():
 
         # Create the batch of data to use
         batch = Transition(*zip(*transitions))
-        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms))
-        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs))
-        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1)
-        reward_batch = torch.from_numpy(np.asarray(batch.reward))
+        nth_next_state_swarms_batch = torch.from_numpy(np.asarray(batch.next_state_swarms)).cuda()
+        swarm_state_batch = torch.from_numpy(np.asarray(batch.swarm_obs)).cuda()
+        swarm_action_batch = torch.from_numpy(np.asarray(batch.swarm_action)).unsqueeze(1).cuda()
+        reward_batch = torch.from_numpy(np.asarray(batch.reward)).cuda()
         # Compute a mask of non-final states and concatenate the batch elements
-        non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone))
+        non_final_mask = torch.from_numpy(np.asarray(batch.doesNotHitDone)).cuda()
         non_final_next_state_swarms_batch = nth_next_state_swarms_batch[non_final_mask, :, :]
 
         #print(swarm_state_batch.shape)
@@ -342,17 +342,17 @@ class DQNAgent():
         state_swarms_predicted_q_batch = self.policy_net(swarm_state_batch).gather(1, swarm_action_batch)
 
         # Compute the swarm's future value for next states
-        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device)
+        next_state_swarms_predicted_qs_batch = torch.zeros((BATCH_SIZE, 12, self.num_nodes), device=device).cuda()
         for swarm_num in range(NUM_GROUPS):
-            next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach()
+            next_state_swarms_predicted_qs_batch[non_final_mask, swarm_num, :] = self.target_net(non_final_next_state_swarms_batch[:, swarm_num, :]).detach().cuda()
         # Limit future value to the best q value for each swarm
-        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2)
-        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1)
+        max_next_state_swarms_predicted_qs_batch = torch.amax(next_state_swarms_predicted_qs_batch, axis=2).cuda()
+        max_next_state_predicted_q_batch = torch.mean(max_next_state_swarms_predicted_qs_batch, axis=1).cuda()
         # Compute the estimated future reward
         estimated_future_reward = (max_next_state_predicted_q_batch * (GAMMA ** N_STEP) + reward_batch)
 
         # Compute the loss
-        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1))
+        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1)).cuda()
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.policy_net.parameters():
