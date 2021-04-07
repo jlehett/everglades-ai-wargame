@@ -6,6 +6,7 @@ import gym_everglades
 import pdb
 import sys
 import matplotlib.pyplot as plt
+import pickle
 from collections import deque 
 
 import numpy as np
