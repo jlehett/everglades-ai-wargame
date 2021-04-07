@@ -20,7 +20,7 @@ sys.path.append(os.path.abspath('../'))
 from agents.State_Machine.random_actions import random_actions
 
 # Import utilities
-from utils.RewardShaping import RewardShaping
+import utils.reward_shaping as reward_shaping
 from utils.Statistics import AgentStatistics
 from agents.PPO.render_ppo import render_charts
 
@@ -71,11 +71,11 @@ ACTION_DIM = 132
 OBSERVATION_DIM = 105
 UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
-NETWORK_SAVE_NAME = "./agents/PPO/saved_models/rppo_new"
+NETWORK_SAVE_NAME = "./agents/PPO/saved_models/rppo_newton_v1"
 SAVE_AFTER_EPISODE = 100
 USE_RECURRENT = True
 TRAIN = True
-DEVICE = "CPU"
+DEVICE = "GPU"
 #################
 
 #################
@@ -96,24 +96,17 @@ players[0] = PPOAgent(OBSERVATION_DIM,
                 TRAIN,
                 SAVE_AFTER_EPISODE,
                 NETWORK_SAVE_NAME)
-names[0] = 'RPPO Agent'
+names[0] = 'R/PPO Agent'
 players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
-
-#############################
-#   Setup Reward Shaping    #
-#############################
-reward_shaper = RewardShaping()
-#############################
-
 
 actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 1000
-RENDER_CHARTS = True # Determines if final charts should be rendered
+n_episodes = 50000
+RENDER_CHARTS = False # Determines if final charts should be rendered
 timestep = 0
 
 #########################
@@ -122,7 +115,7 @@ timestep = 0
 k = 50 #The set number of episodes to show win rates for
 
 # The Stats class (for saving statistics)
-stats = AgentStatistics(names[0], n_episodes, k, save_file="saved-stats/rppo_new")
+stats = AgentStatistics(names[0], n_episodes, k, save_file="saved-stats/rppo_newton_v1")
 
 # General stats
 score = 0
@@ -172,7 +165,7 @@ for i_episode in range(1, n_episodes+1):
         observations, reward, done, info = env.step(actions)
 
         # Reward Shaping
-        turn_scores = reward_shaper.reward_short_games(reward, done, turnNum)
+        turn_scores = reward_shaping.reward_short_games(1,reward, done, turnNum)
 
         timestep += 1
         #########################
@@ -235,6 +228,9 @@ for i_episode in range(1, n_episodes+1):
         print('\rEpisode {}\tAverage Score {:.4f}'.format(i_episode,np.mean(short_term_wr)))
         stats.short_term_scores.append(np.mean(short_term_wr))
         short_term_wr = np.zeros((k,), dtype=int)
+
+        # Save statistics every k episodes
+        stats.save_stats()
     ################################
     env.close()
 
@@ -249,9 +245,9 @@ for i_episode in range(1, n_episodes+1):
 # Save final model state
 players[0].save_network(i_episode)
 
+# Save run stats
+stats.save_stats()
+
 # Render charts to show visual of training stats
 if RENDER_CHARTS:
     render_charts(stats)
-
-# Save run stats
-stats.save_stats()
