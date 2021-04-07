@@ -144,7 +144,7 @@ for i_episode in range(1, n_episodes+1):
     ################################
     env.close()
 
-save_file = open(constants.network_save_name + '_data.pickle', 'wb')
+save_file = open(os.getcwd() + constants.network_save_name + '_data.pickle', 'wb')
 pickle.dump({
     'scores': scores,
     'k': k,
