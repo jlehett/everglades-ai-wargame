@@ -43,9 +43,7 @@ class EvergladesEnv(gym.Env):
         if status != 0:
             done = 1
             if scores[0] != scores[1]:
-                ### Boosted win score to compensate for new reward system
                 reward[0] = 1 if scores[0] > scores[1] else 0
-                ###
 
                 reward[1] = 1 if scores[1] > scores[0] else -1
             # else reward is 0 for a tie
