@@ -43,7 +43,7 @@ n_episodes = constants.n_episodes
 # Statistic variables   #
 #########################
 scores = []
-k = 100
+k = 2500
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
