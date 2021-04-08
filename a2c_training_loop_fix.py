@@ -14,7 +14,7 @@ import utils.reward_shaping as reward_shaping
 
 from everglades_server import server
 from agents.A2C_Loop_Fix.A2C_Loop_Fix import A2C_Loop_Fix
-from agents.random_actions import random_actions
+from agents.State_Machine.random_actions_delay import random_actions_delay
 
 #from everglades-server import generate_map
 
@@ -52,17 +52,17 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = A2C_Loop_Fix(132, env.observation_space, 528, 8)
+players[0] = A2C_Loop_Fix(132, env.observation_space, 128, 4)
 names[0] = "DQN Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent'
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
+names[1] = 'Random Agent Delay'
 #################
 
 actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 5000
+n_episodes = 2000
 
 #########################
 # Statistic variables   #
