@@ -97,7 +97,7 @@ players[0] = PPOAgent(OBSERVATION_DIM,
                 SAVE_AFTER_EPISODE,
                 NETWORK_SAVE_NAME)
 names[0] = 'R/PPO Agent'
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
 
