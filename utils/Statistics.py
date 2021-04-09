@@ -48,7 +48,7 @@ class AgentStatistics:
         Saves the agent's statistics.
         """
         if self.save_file:
-            save_file = open(self.save_file + '.pickle', 'wb')
+            save_file = open(os.getcwd() + self.save_file + '.pickle', 'wb')
             pickle.dump({
                 'agent_name': self.agent_name,
                 'n_episodes': self.n_episodes,

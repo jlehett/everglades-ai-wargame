@@ -115,7 +115,7 @@ timestep = 0
 k = 50 #The set number of episodes to show win rates for
 
 # The Stats class (for saving statistics)
-stats = AgentStatistics(names[0], n_episodes, k, save_file="saved-stats/rppo_newton_v1")
+stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v1")
 
 # General stats
 score = 0
@@ -154,8 +154,8 @@ for i_episode in range(1, n_episodes+1):
 
     turnNum = 0
     while not done:
-        if i_episode % 25 == 0:
-            env.render()
+        #if i_episode % 25 == 0:
+        #    env.render()
 
         # Get actions for each player
         for pid in players:

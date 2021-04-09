@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import pickle
+import os
 from agents.PPO.ActorCritic import ActorCritic
 from agents.PPO.PPOMemory import Memory
 
@@ -271,14 +272,13 @@ class PPOAgent:
         @param episodes The number of episodes that have elapsed since the current training session began
         """
         if self.network_save_name:
-            save_file = open(self.network_save_name + '.pickle', 'wb')
+            save_file = open(os.getcwd() + self.network_save_name + '.pickle', 'wb')
             pickle.dump({
                 'type': 'PPO',
                 'policy_old_state_dict': self.policy_old.state_dict(),
                 'policy_state_dict': self.policy.state_dict(),
                 'update_timestep': self.update_timestep,
                 'use_recurrent': self.use_recurrent,
-                #'episodes': episodes + self.previous_episodes, #TODO: Ask Tanner what this is
                 'n_latent_var': self.n_latent_var,
                 'lr': self.lr,
                 'betas': self.betas,
