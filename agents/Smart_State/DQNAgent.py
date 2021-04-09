@@ -433,7 +433,7 @@ class DQNAgent():
         @param episodes The number of episodes that have elapsed since the current training session began
         """
         if self.network_save_name:
-            save_file = open(self.network_save_name + '.pickle', 'wb')
+            save_file = open(os.getcwd() + self.network_save_name + '.pickle', 'wb')
             pickle.dump({
                 'policy_state_dict': self.policy_net.state_dict(),
                 'target_state_dict': self.target_net.state_dict(),
