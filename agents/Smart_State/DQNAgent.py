@@ -103,11 +103,11 @@ class DQNAgent():
         # Set up the network
         self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size, self.fc2_size)
         self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size, self.fc2_size)
-        try:
-            policy_net.cuda()
-            target_net.cuda()
-        except:
-            pass
+        
+        policy_net.cuda()
+        target_net.cuda()
+        
+        
 
         # Load up the save policy network data if it exists
         if save_file_data:
