@@ -382,7 +382,7 @@ class DQNAgent():
         estimated_future_reward = (max_next_state_predicted_q_batch * (self.gamma ** self.n_step) + reward_batch).to(device)
 
         # Compute the loss
-        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch, estimated_future_reward.type(torch.FloatTensor).unsqueeze(1)).to(device)
+        loss = F.smooth_l1_loss(state_swarms_predicted_q_batch.type(torch.FloatTensor).to(device), estimated_future_reward.type(torch.FloatTensor).unsqueeze(1).to(device)).to(device)
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.policy_net.parameters():
