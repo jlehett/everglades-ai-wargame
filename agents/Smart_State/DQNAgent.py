@@ -254,7 +254,7 @@ class DQNAgent():
         swarm_obs = self.create_swarm_obs(swarm_number, obs, allies_on_node)
         # Find the predicted Q values for the swarm for all 12 possible actions
         with torch.no_grad():
-                swarm_predicted_q = self.policy_net(swarm_obs).cuda()
+                swarm_predicted_q = self.policy_net(swarm_obs).to(device)
         # Find the best predicted direction
         best_direction = torch.argmax(swarm_predicted_q).to(device)
         # Use the Move_Translation helper file to get the move the swarm would take by going in that direction
@@ -303,8 +303,8 @@ class DQNAgent():
         # Add swarm number ID to the input
         swarm_obs[47+swarm_number] = 1
         # Return the final swarm observation array
-        #ret_obs = torch.from_numpy(x).to(device)
-        return swarm_obs
+        ret_obs = torch.from_numpy(swarm_obs).to(device)
+        return ret_obs
 
     def get_swarm_node_number(self, swarm_number, obs):
         """
