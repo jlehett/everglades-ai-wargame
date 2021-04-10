@@ -390,7 +390,7 @@ class DQNAgent():
         self.optimizer.step()
 
         # Sets the loss to be grabbed by training file
-        self.loss = loss.detach().numpy()
+        self.loss = loss.detach()
 
     def end_of_episode(self, episodes):
         """
