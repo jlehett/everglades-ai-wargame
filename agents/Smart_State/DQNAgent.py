@@ -303,11 +303,8 @@ class DQNAgent():
         # Add swarm number ID to the input
         swarm_obs[47+swarm_number] = 1
         # Return the final swarm observation array
-        try:
-            swarm_obs = torch.from_numpy(swarm_obs).to(device)
-        except:
-            pass
-        
+        swarm_obs = torch.from_numpy(swarm_obs).cpu()
+
         return swarm_obs
 
     def get_swarm_node_number(self, swarm_number, obs):
