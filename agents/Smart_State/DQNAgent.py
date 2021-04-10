@@ -337,7 +337,7 @@ class DQNAgent():
         # We can compute the number of allies on each node outside of the for loop
         previous_state_allies_on_node = self.get_allies_on_node_data(previous_state)
         for swarm_num in range(NUM_GROUPS):
-            per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node)
+            per_swarm_previous_state[swarm_num] = self.create_swarm_obs(swarm_num, previous_state, previous_state_allies_on_node).cpu()
         # Track the game in memory (the game itself is only integrated into the memory replay after the full game is played)
         self.NStepModule.trackGameState(per_swarm_previous_state, actions, reward)
 
