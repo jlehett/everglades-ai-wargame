@@ -104,8 +104,8 @@ class DQNAgent():
         self.policy_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size, self.fc2_size)
         self.target_net = QNetwork(INPUT_SIZE, OUTPUT_SIZE, self.fc1_size, self.fc2_size)
         
-        policy_net.cuda()
-        target_net.cuda()
+        self.policy_net.cuda()
+        self.target_net.cuda()
         
         
 
