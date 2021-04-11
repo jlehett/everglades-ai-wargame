@@ -105,7 +105,7 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 1000
+n_episodes = 100000
 RENDER_CHARTS = False # Determines if final charts should be rendered
 timestep = 0
 
@@ -113,7 +113,7 @@ timestep = 0
 # Statistic variables   #
 #########################
 k = 100 #The set number of episodes to show win rates for
-p = 100
+p = 10000
 # The Stats class (for saving statistics)
 stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v1")
 
