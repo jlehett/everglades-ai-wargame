@@ -75,7 +75,7 @@ n_episodes = 10
 # Statistic variables   #
 #########################
 k = 1
-stats = AgentStatistics(names[0], n_episodes, k, save_file='/saved-stats/smart_state_newton')
+stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + '/saved-stats/smart_state_newton')
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 
 ties = 0
