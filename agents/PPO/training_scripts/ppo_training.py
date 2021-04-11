@@ -22,7 +22,7 @@ from agents.State_Machine.random_actions import random_actions
 # Import utilities
 import utils.reward_shaping as reward_shaping
 from utils.Statistics import AgentStatistics
-from agents.PPO.render_ppo import render_charts
+# from agents.PPO.render_ppo import render_charts
 
 from agents.State_Machine.random_actions_delay import random_actions_delay
 from agents.State_Machine.random_actions import random_actions
