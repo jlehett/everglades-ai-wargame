@@ -46,7 +46,7 @@ class DQNAgent():
         player_num,
         map_name,
         train=True,
-        network_save_name='newton',
+        network_save_name=None,
         network_load_name=None,
     ):
         """
