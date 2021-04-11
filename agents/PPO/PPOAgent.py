@@ -83,12 +83,12 @@ class PPOAgent:
         self.memory = Memory()
 
         # Set up agent policy
-        self.policy = ActorCritic(state_dim, action_dim, n_latent_var, device, self.use_recurrent).to(device)
+        self.policy = ActorCritic(state_dim, action_dim, n_latent_var, device, self.use_recurrent).cuda()
         # Do not use RMSProp (learned that the hard way). Adam is the optimizer to use for PPO
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
 
         # Set up agent old_policy
-        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, device, self.use_recurrent).to(device)
+        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, device, self.use_recurrent).cuda()
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         # Set up the hidden states
