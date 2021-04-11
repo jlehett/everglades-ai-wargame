@@ -3,7 +3,7 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 from gym.spaces import Tuple, Discrete, Box
 import everglades_server.server as server
-from gym_everglades.envs.everglades_renderer import EvergladesRenderer
+# from gym_everglades.envs.everglades_renderer import EvergladesRenderer
 
 import numpy as np
 import pdb
@@ -105,21 +105,28 @@ class EvergladesEnv(gym.Env):
         # Initialize players with selected groups
         self.game.game_init(self.player_dat)
 
-        self.renderer = EvergladesRenderer(self.game)
+        #self.renderer = EvergladesRenderer(self.game)
 
         # Get first game state
         observations = self._build_observations()
         #pdb.set_trace()
 
-        self.renderer = EvergladesRenderer(self.game)
+        #self.renderer = EvergladesRenderer(self.game)
 
         return observations
 
     def render(self, mode='human'):
-        self.renderer.render(mode)
+        try:
+            self.renderer.render(mode)
+        except:
+            pass
+
 
     def close(self):
-        self.renderer.close()
+        try:
+            self.renderer.close()
+        except:
+            pass
 
     def _build_observation_space(self):
         group_low = np.array([1, 0, 0, 0, 0])  # node loc, class, avg health, in transit, num units rem

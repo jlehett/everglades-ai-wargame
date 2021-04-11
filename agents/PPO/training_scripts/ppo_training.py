@@ -71,7 +71,7 @@ ACTION_DIM = 132
 OBSERVATION_DIM = 105
 UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
-NETWORK_SAVE_NAME = "./agents/PPO/saved_models/rppo_newton_v1"
+NETWORK_SAVE_NAME = "/agents/PPO/saved_models/rppo_newton_v1"
 SAVE_AFTER_EPISODE = 100
 USE_RECURRENT = True
 TRAIN = True
@@ -105,14 +105,14 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 50000
+n_episodes = 10
 RENDER_CHARTS = False # Determines if final charts should be rendered
 timestep = 0
 
 #########################
 # Statistic variables   #
 #########################
-k = 50 #The set number of episodes to show win rates for
+k = 10 #The set number of episodes to show win rates for
 
 # The Stats class (for saving statistics)
 stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v1")

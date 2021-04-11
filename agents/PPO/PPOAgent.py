@@ -6,7 +6,7 @@ from agents.PPO.ActorCritic import ActorCritic
 from agents.PPO.PPOMemory import Memory
 
 global device 
-device = torch.device('cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 #######################
 #   PPO Agent Class   #
@@ -54,9 +54,9 @@ class PPOAgent:
         @param network_save_name The save file for the agent
         """
         # Enables GPU Training
-        global device
-        if DEVICE == 'GPU':
-            device = torch.device('cuda')
+        #global device
+        #if DEVICE == 'GPU':
+            #device = torch.device('cuda')
 
         # Set recurrent agent or non-recurrent agent
         self.use_recurrent = use_recurrent
@@ -92,7 +92,7 @@ class PPOAgent:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         # Set up the hidden states
-        self.hidden = torch.zeros(self.n_latent_var).unsqueeze(0).unsqueeze(0)
+        self.hidden = torch.zeros(self.n_latent_var).unsqueeze(0).unsqueeze(0).to(device)
         
         # Set up the log variables to be grabbed by the training file
         self.loss = 0
@@ -102,7 +102,7 @@ class PPOAgent:
 
         # Set the loss function
         # Only use MSELoss for PPO
-        self.MSE = torch.nn.MSELoss()
+        self.MSE = torch.nn.MSELoss().to(device)
 
     def get_action(self, observation):
         """
@@ -146,15 +146,15 @@ class PPOAgent:
         """
 
         # Pull data from memory
-        old_states = torch.stack(self.memory.states).to(device).detach()
-        next_states = torch.stack(self.memory.next_states).to(device).detach()
-        old_actions = torch.stack(self.memory.actions).to(device).detach()
-        old_logprobs = torch.stack(self.memory.logprobs).to(device).detach()
-        mask = torch.stack(self.memory.is_terminals).to(device).detach()
-        reward = torch.from_numpy(np.asarray(self.memory.rewards)).to(device).detach()
+        old_states = torch.stack(self.memory.states).to(device).detach().to(device)
+        next_states = torch.stack(self.memory.next_states).to(device).detach().to(device)
+        old_actions = torch.stack(self.memory.actions).to(device).detach().to(device)
+        old_logprobs = torch.stack(self.memory.logprobs).to(device).detach().to(device)
+        mask = torch.stack(self.memory.is_terminals).to(device).detach().to(device)
+        reward = torch.from_numpy(np.asarray(self.memory.rewards)).to(device).detach().to(device)
         
         # Set the hidden states
-        hidden = torch.zeros(old_states.size(0),self.n_latent_var).unsqueeze(0).to(device)
+        hidden = torch.zeros(old_states.size(0),self.n_latent_var).unsqueeze(0).to(device).to(device)
 
         # Calculate values for Generalized Advantage Estimation
         _,values,_ = self.policy.evaluate(old_states, old_actions, hidden)
@@ -167,7 +167,7 @@ class PPOAgent:
         self.calc_losses(old_states, old_actions, old_logprobs, rewards, hidden)
 
         # Reset the hidden states
-        self.hidden = torch.zeros(self.n_latent_var).unsqueeze(0).unsqueeze(0)
+        self.hidden = torch.zeros(self.n_latent_var).unsqueeze(0).unsqueeze(0).to(device)
 
         # Copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
@@ -194,7 +194,7 @@ class PPOAgent:
             ### End Generalized Advantage Estimation ###
 
         # Normalizing the rewards:
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device) - values[:]
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device) - values[:] #sus
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         return rewards
@@ -217,15 +217,15 @@ class PPOAgent:
             logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions, hidden)
 
             # Finding the ratio (pi_theta / pi_theta_old):
-            ratios = torch.exp(logprobs - old_logprobs.detach())
+            ratios = torch.exp(logprobs - old_logprobs.detach()).to(device)
 
             # Finding surrogate loss:
             advantages = rewards
             surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
+            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip).to(device) * advantages
 
             # Calculate the losses
-            actor_loss = torch.min(surr1, surr2)
+            actor_loss = torch.min(surr1, surr2).to(device)
             critic_loss = self.MSE(state_values, rewards) * 0.5
             entropy = 0.01*dist_entropy
             loss = -actor_loss + critic_loss - entropy
