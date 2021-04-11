@@ -69,13 +69,13 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 1000
+n_episodes = 60000
 
 #########################
 # Statistic variables   #
 #########################
 k = 100
-p = 10
+p = 5000
 stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + '/saved-stats/smart_state_newton')
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 
