@@ -105,15 +105,15 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 10
+n_episodes = 1000
 RENDER_CHARTS = False # Determines if final charts should be rendered
 timestep = 0
 
 #########################
 # Statistic variables   #
 #########################
-k = 10 #The set number of episodes to show win rates for
-
+k = 100 #The set number of episodes to show win rates for
+p = 100
 # The Stats class (for saving statistics)
 stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v1")
 
@@ -223,7 +223,8 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    print('\rEpisode: {}\tCurrent WR: {:.4f}\tWins: {} Losses: {} Ties: {} Steps until Update: {} Loss: {:.4f} Actor Loss: {:.4f} Critic Loss: {:.4f} Entropy: {:.4f}\n'.format(i_episode,current_wr,score,losses,ties,(UPDATE_TIMESTEP - current_eps),current_loss,current_actor_loss,current_critic_loss,entropy), end="")
+    if i_episode % p == 0:
+        print('\rEpisode: {}\tCurrent WR: {:.4f}\tWins: {} Losses: {} Ties: {} Steps until Update: {} Loss: {:.4f} Actor Loss: {:.4f} Critic Loss: {:.4f} Entropy: {:.4f}\n'.format(i_episode,current_wr,score,losses,ties,(UPDATE_TIMESTEP - current_eps),current_loss,current_actor_loss,current_critic_loss,entropy), end="")
     if i_episode % k == 0:
         print('\rEpisode {}\tAverage Score {:.4f}'.format(i_episode,np.mean(short_term_wr)))
         stats.short_term_scores.append(np.mean(short_term_wr))
