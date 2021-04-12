@@ -83,13 +83,12 @@ STATE_MACHINE_OPTIONS = {
 #########################################
 
 PLAYER_1_AGENT = AgentLoader.loadAgent(
-    save_file_path='saved-agents/70-87_fc2',
+    save_file_path='saved-agents/smart_state_newton',
     player_num=1
 )
 
 PLAYER_2_AGENT = loadStateMachine(
-    selection='Base Rush V1',
-    selection='Swarm Agent',
+    selection='Random Actions Delay',
     player_num=2
 )
 

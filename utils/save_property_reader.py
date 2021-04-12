@@ -82,13 +82,13 @@ def displaySpecifiedKeys(save_file_path, keys_to_display):
 # Logic to run if this file itself is run
 if __name__ == '__main__':
     # Variables to modify to run this script
-    SAVE_FILE_PATH = 'agents/Smart_State/saved_models/81-69'
+    SAVE_FILE_PATH = 'saved-agents/smart_state_newton'
     
     # Call the displaySaveFileInfo function
-    displaySaveFileInfo(SAVE_FILE_PATH)
+    #displaySaveFileInfo(SAVE_FILE_PATH)
 
     # Call the displayAllKeys function
-    #displayAllKeys(SAVE_FILE_PATH)
+    displayAllKeys(SAVE_FILE_PATH)
 
     # Call the displaySpecifiedKeys function
     #displaySpecifiedKeys(SAVE_FILE_PATH, ['fc1_size', 'gamma'])
