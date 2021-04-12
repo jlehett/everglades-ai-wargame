@@ -434,8 +434,8 @@ class DQNAgent():
         if self.network_save_name:
             save_file = open(os.getcwd() + self.network_save_name + '.pickle', 'wb')
             pickle.dump({
-                'policy_state_dict': {k: v.cpu() for k, v in self.policy_net.state_dict()},
-                'target_state_dict': {k: v.cpu() for k, v in self.target_net.state_dict()},
+                'policy_state_dict': self.policy_net.state_dict(),
+                'target_state_dict': self.target_net.state_dict(),
                 'epsilon': self.epsilon,
                 'episodes': episodes + self.previous_episodes,
                 'fc1_size': self.fc1_size,
