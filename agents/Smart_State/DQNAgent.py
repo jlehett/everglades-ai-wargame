@@ -414,9 +414,6 @@ class DQNAgent():
         # Update target network every UPDATE_TARGET_AFTER episodes
         if (episodes + self.previous_episodes) % self.target_update == 0 and self.train:
             self.target_net.load_state_dict(self.policy_net.state_dict())
-        # Save the network every SAVE_NETWORK_AFTER episodes
-        if (episodes + self.previous_episodes) % SAVE_NETWORK_AFTER == 0 and self.train:
-            self.save_network(episodes)
         # Decay epsilon
         if self.train:
             self.epsilon *= EPS_DECAY
@@ -437,8 +434,8 @@ class DQNAgent():
         if self.network_save_name:
             save_file = open(os.getcwd() + self.network_save_name + '.pickle', 'wb')
             pickle.dump({
-                'policy_state_dict': self.policy_net.state_dict(),
-                'target_state_dict': self.target_net.state_dict(),
+                'policy_state_dict': {k: v.cpu() for k, v in self.policy_net.state_dict()},
+                'target_state_dict': {k: v.cpu() for k, v in self.target_net.state_dict()},
                 'epsilon': self.epsilon,
                 'episodes': episodes + self.previous_episodes,
                 'fc1_size': self.fc1_size,
