@@ -62,8 +62,8 @@ names = {}
 #   PPO Constants   #
 #####################
 N_LATENT_VAR = 248
-LR = 0.0001
-K_EPOCHS = 8
+LR = 0.000001
+K_EPOCHS = 4
 GAMMA = 0.99
 BETAS = (0.9,0.999)
 EPS_CLIP = 0.2
@@ -71,7 +71,7 @@ ACTION_DIM = 132
 OBSERVATION_DIM = 105
 UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
-NETWORK_SAVE_NAME = "/agents/PPO/saved_models/rppo_newton_v1"
+NETWORK_SAVE_NAME = "/agents/PPO/saved_models/rppo_newton_v2"
 SAVE_AFTER_EPISODE = 100
 USE_RECURRENT = True
 TRAIN = True
@@ -115,7 +115,7 @@ timestep = 0
 k = 100 #The set number of episodes to show win rates for
 p = 10000
 # The Stats class (for saving statistics)
-stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v1")
+stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v2")
 
 # General stats
 score = 0
