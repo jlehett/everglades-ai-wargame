@@ -57,7 +57,7 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=TRAIN,
-    network_save_name='/agents/Smart_State/saved_models/newton',
+    network_save_name='/agents/Smart_State/saved_models/newton_fast',
     network_load_name=None,
 )
 names[0] = "DQN Agent"
@@ -76,7 +76,7 @@ n_episodes = 60000
 #########################
 k = 100
 p = 5000
-stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + '/saved-stats/smart_state_newton')
+stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + '/saved-stats/newton_fast')
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 
 ties = 0
@@ -136,7 +136,6 @@ for i_episode in range(1, n_episodes+1):
             directions,
             turn_scores
         )
-        players[0].optimize_model()
         #########################
 
         current_eps = players[0].epsilon

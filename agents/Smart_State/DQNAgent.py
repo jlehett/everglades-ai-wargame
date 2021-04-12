@@ -16,7 +16,7 @@ EVALUATE_EPSILON = 0.0 # The epsilon value to use when evaluating the network (w
 TRAIN_EPSILON_START = 0.95 # The epsilon value to use when starting to train the network (when TRAIN is set to True)
 TRAIN_EPSILON_MIN = 0.05 # The minimum epsilon value to use during training (when TRAIN is set to True)
 TRAIN_LR_START = 1e-5 # The learning rate value to use when starting to train the network (when TRAIN is set to True)
-TRAIN_LR_MIN = 1e-5 # The minimum learning rate value to use during training (when TRAIN is set to True)
+TRAIN_LR_MIN = 1e-8 # The minimum learning rate value to use during training (when TRAIN is set to True)
 
 SAVE_NETWORK_AFTER = 10 # Save the network every n episodes
 
@@ -30,8 +30,8 @@ OUTPUT_SIZE = 5 # This is a custom value defined when creating the smart state a
 FC1_SIZE = 80 # Number of nodes in the first hidden layer
 FC2_SIZE = 80 # number of nodes in the second hidden layer
 
-BATCH_SIZE = 1024 # The number of inputs to train on at one time
-TARGET_UPDATE = 400 # The number of episodes to wait until we update the target network
+BATCH_SIZE = 5012 # The number of inputs to train on at one time
+TARGET_UPDATE = 500 # The number of episodes to wait until we update the target network
 MEMORY_SIZE = 100000 # The number of experiences to store in memory replay
 GAMMA = 0.999 # The amount to discount the future rewards by
 N_STEP = 1 # The number of steps to use in multi-step learning
@@ -411,6 +411,8 @@ class DQNAgent():
 
         @param episodes The number of episodes that have elapsed since the current training session began
         """
+        # Optimize the model
+        self.optimize_model()
         # Update target network every UPDATE_TARGET_AFTER episodes
         if (episodes + self.previous_episodes) % self.target_update == 0 and self.train:
             self.target_net.load_state_dict(self.policy_net.state_dict())
