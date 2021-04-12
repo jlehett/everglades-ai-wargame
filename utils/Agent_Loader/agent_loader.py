@@ -27,7 +27,7 @@ class AgentLoader:
         # Define agent_class_mapping like a switch statement mapping type to a specific loading function
         agent_class_mapping = {
             'Smart State Fixed 1 Hidden Layer': SmartStateFixedFC1,
-            'Smart State Fixed 2 Hidden Layers': SmartStateFixedFC2
+            'Smart State Fixed 2 Hidden Layers': SmartStateFixedFC2,
             'PPO': PPO
         }
 

@@ -85,10 +85,10 @@ if __name__ == '__main__':
     SAVE_FILE_PATH = 'saved-agents/smart_state_newton'
     
     # Call the displaySaveFileInfo function
-    #displaySaveFileInfo(SAVE_FILE_PATH)
+    displaySaveFileInfo(SAVE_FILE_PATH)
 
     # Call the displayAllKeys function
-    displayAllKeys(SAVE_FILE_PATH)
+    #displayAllKeys(SAVE_FILE_PATH)
 
     # Call the displaySpecifiedKeys function
     #displaySpecifiedKeys(SAVE_FILE_PATH, ['fc1_size', 'gamma'])

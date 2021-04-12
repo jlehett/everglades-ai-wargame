@@ -88,7 +88,7 @@ PLAYER_1_AGENT = AgentLoader.loadAgent(
 )
 
 PLAYER_2_AGENT = loadStateMachine(
-    selection='Random Actions Delay',
+    selection='Pure Random Actions',
     player_num=2
 )
 

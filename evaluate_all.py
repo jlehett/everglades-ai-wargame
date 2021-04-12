@@ -83,7 +83,7 @@ STATE_MACHINE_OPTIONS = {
 # SET THESE TO CUSTOMIZE THE EVALUATION #
 #########################################
 
-PLAYER_1_AGENT_SAVE_FILE = 'rppo_new'
+PLAYER_1_AGENT_SAVE_FILE = 'smart_state_newton'
 
 SIGNIFICANCE_LEVEL = 0.95
 
