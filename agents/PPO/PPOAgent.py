@@ -277,8 +277,8 @@ class PPOAgent:
             self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr, betas=self.betas)
             print('Average Win Rate Did Not Improve. Reducing LR to {}'.format(self.lr))
         
-        # Update k_wr
-        if episode % self.save_after_episode == 0:
+        # Update historic k_wr if current k_wr is greater
+        if episode % self.save_after_episode == 0 and self.k_wr < k_wr:
             self.k_wr = k_wr
     
     def save_network(self, episodes):
