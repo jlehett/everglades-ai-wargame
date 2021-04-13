@@ -62,7 +62,7 @@ names = {}
 #   PPO Constants   #
 #####################
 N_LATENT_VAR = 248
-LR = 0.000001
+LR = 0.00001
 K_EPOCHS = 4
 GAMMA = 0.99
 BETAS = (0.9,0.999)
