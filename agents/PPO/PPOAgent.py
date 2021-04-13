@@ -273,7 +273,7 @@ class PPOAgent:
         
         # Decay the learning rate if new k_wr is less than historic k_wr
         if episode % self.save_after_episode == 0 and k_wr <= self.k_wr:
-            self.lr = self.lr / 2
+            self.lr *= 0.9
             self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr, betas=self.betas)
             print('Average Win Rate Did Not Improve. Reducing LR to {}'.format(self.lr))
         
