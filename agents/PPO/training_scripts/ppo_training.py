@@ -175,7 +175,7 @@ for i_episode in range(1, n_episodes+1):
 
         # Handle end of game updates
         if done:
-            players[0].end_of_episode(i_episode)
+            players[0].end_of_episode(i_episode, np.mean(short_term_wr))
 
         # Updates agent after UPDATE_TIMESTEP number of steps
         if timestep % UPDATE_TIMESTEP == 0:

@@ -70,6 +70,7 @@ class PPOAgent:
         self.K_epochs = K_epochs
         self.n_latent_var = n_latent_var
         self.shape = (7, 2)
+        self.k_wr = 0
 
         # Set agent saving parameters
         self.network_save_name = network_save_name
@@ -243,26 +244,33 @@ class PPOAgent:
             self.dist_entropy = entropy.mean().detach().cpu()
         pass
 
-    def end_of_episode(self, episode):
+    def end_of_episode(self, episode, k_wr):
         """
         Handles end of episode logic for the agent
 
         @param episode The current episode the agent is on
+        @param k_wr The win rate after k episodes (used for LR decay)
         """
         # Handle end of episode logic
         if self.train:
-            self.end_of_episode_train(episode)
+            self.end_of_episode_train(episode, k_wr)
         
 
-    def end_of_episode_train(self, episode):
+    def end_of_episode_train(self, episode, k_wr):
         """
         Handles end of episode logic while agent is training
 
         @param episode The current episode the agent is on
+        @param k_wr The win rate after k episodes (used for LR decay)
         """
         # Handle end of episode while training
         if episode % self.save_after_episode == 0:
             self.save_network(episode)
+        
+        # Decay the learning rate if new k_wr is less than historic k_wr
+        if episode % self.save_after_episode == 0 and k_wr <= self.k_wr:
+            self.lr = self.lr / 2
+            self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr, betas=self.betas)
         
     
     def save_network(self, episodes):
