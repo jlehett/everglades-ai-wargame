@@ -15,6 +15,7 @@ from statsmodels.stats.proportion import proportion_confint
 import numpy as np
 
 import utils.reward_shaping as reward_shaping
+from utils.Statistics import AgentStatistics
 
 from everglades_server import server
 from agents.Smart_State.DQNAgent import DQNAgent
@@ -64,7 +65,7 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=TRAIN,
-    network_save_name=None,
+    network_save_name='/agents/Smart_State/saved_models/newton_cycled',
     network_load_name=None,
 )
 names[0] = "DQN Agent"
@@ -182,19 +183,22 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 5000
+n_episodes = 60000
 
 #########################
 # Statistic variables   #
 #########################
 scores = []
 k = 100
+p = 5000
+stats = AgentStatistics(names[0], n_episodes, k, save_file=os.getcwd() + '/saved-stats/newton_cycled')
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
 losses = 0
 score = 0
 current_eps = 0
+current_loss = 0
 
 epsilonVals = []
 current_loss = 0
@@ -253,9 +257,9 @@ for i_episode in range(1, n_episodes+1):
             observations[0],
             directions,
             reward_shaping.transition(
-                reward_shaping.normalized_score,
                 reward_shaping.reward_short_games,
-                200,
+                reward_shaping.basic_reward,
+                10000,
                 i_episode,
                 0,
                 reward,
@@ -267,6 +271,7 @@ for i_episode in range(1, n_episodes+1):
         #########################
 
         current_eps = players[0].epsilon
+        current_loss = players[0].loss
 
         # Increment the turn number
         turn_num += 1
@@ -293,18 +298,25 @@ for i_episode in range(1, n_episodes+1):
     #############################################
     # Update Score statistics for final chart   #
     #############################################
+    stats.scores.append(score / i_episode)
     scores.append(score / i_episode) ## save the most recent score
     current_wr = score / i_episode
     epsilonVals.append(current_eps)
+    stats.epsilons.append(current_eps)
+    stats.network_loss.append(current_loss)
+    q_values = 0
+    stats.q_values.append(q_values)
     #############################################
 
     #################################
     # Print current run statistics  #
     #################################
     if TRAIN:
-        print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
+        if i_episode % p == 0:
+            print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {}\tEpsilon: {:.2f}\tLR: {:.2e}\tTies: {}\n'.format(i_episode+players[0].previous_episodes,current_wr,score,losses,current_eps, players[0].learning_rate, ties), end="")
         if i_episode % k == 0:
             print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
+            stats.short_term_scores.append(np.mean(short_term_wr))
             short_term_scores.append(np.mean(short_term_wr))
             short_term_wr = np.zeros((k,), dtype=int)
     else:
@@ -324,43 +336,6 @@ for i_episode in range(1, n_episodes+1):
     ################################
     env.close()
 
-#####################
-# Plot final charts #
-#####################
-fig, (ax1, ax2) = plt.subplots(2)
+players[0].save_network(i_episode)
 
-#########################
-#   Epsilon Plotting    #
-#########################
-par1 = ax1.twinx()
-par2 = ax2.twinx()
-#########################
-
-######################
-#   Cumulative Plot  #
-######################
-ax1.set_ylim([0.0,1.0])
-fig.suptitle('Win rates')
-ax1.plot(np.arange(1, n_episodes+1),scores)
-ax1.set_ylabel('Cumulative win rate')
-ax1.yaxis.label.set_color('blue')
-par1.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par1.set_ylabel('Epsilon')
-par1.yaxis.label.set_color('green')
-#######################
-
-##################################
-#   Average Per K Episodes Plot  #
-##################################
-ax2.set_ylim([0.0,1.0])
-par2.plot(np.arange(1,n_episodes+1),epsilonVals,color="green")
-par2.set_ylabel('Epsilon')
-par2.yaxis.label.set_color('green')
-ax2.plot(np.arange(0, n_episodes+1, k),short_term_scores)
-ax2.set_ylabel('Average win rate')
-ax2.yaxis.label.set_color('blue')
-ax2.set_xlabel('Episode #')
-plt.show()
-#############################
-
-#########
+stats.save_stats()
