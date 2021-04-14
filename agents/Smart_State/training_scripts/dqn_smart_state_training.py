@@ -57,7 +57,7 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=TRAIN,
-    network_save_name='/agents/Smart_State/saved_models/newton_fast',
+    network_save_name='/agents/Smart_State/saved_models/newton_single_layer',
     network_load_name=None,
 )
 names[0] = "DQN Agent"
@@ -76,7 +76,7 @@ n_episodes = 60000
 #########################
 k = 100
 p = 5000
-stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + '/saved-stats/newton_fast')
+stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + '/saved-stats/newton_single_layer')
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 
 ties = 0
@@ -128,14 +128,22 @@ for i_episode in range(1, n_episodes+1):
         #########################
         # Handle agent update   #
         #########################
-        turn_scores = reward_shaping.reward_short_games(0, reward, done, turn_num)
-
         players[0].remember_game_state(
             prev_observation,
             observations[0],
             directions,
-            turn_scores
+            reward_shaping.transition(
+                reward_shaping.reward_short_games,
+                reward_shaping.basic_reward,
+                10000,
+                i_episode,
+                0,
+                reward,
+                done,
+                turn_num
+            )
         )
+        players[0].optimize_model()
         #########################
 
         current_eps = players[0].epsilon
