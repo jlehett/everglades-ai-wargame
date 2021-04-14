@@ -6,7 +6,7 @@ import numpy as np
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class QNetwork(nn.Module):
-    def __init__(self, input_size, output_size, fc1_unit, fc2_unit):
+    def __init__(self, input_size, output_size, fc1_unit):
         super(QNetwork, self).__init__()
         self.seed = torch.manual_seed(1)
 
