@@ -1,4 +1,4 @@
-## Dave Mahoney, Joel Membribe A2C_Cartpole ##
+## Dave Mahoney, Joel Membribe A2C ##
 import gym
 import numpy as np
 from itertools import count
@@ -10,44 +10,64 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
-#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
+import json
+import pickle
+import os
+import random
 
-num_actions = 1
+SAVE_NETWORK_AFTER = 5 # Save the network every n episodes
+
+global device
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = "cpu"
 
 # Hyperparameters
-learning_rate = 1e-2
-gamma = 0.999
-epsilon = 0.99
 
 SavedAction = namedtuple('SavedAction', ['log_prob','value'])
 
-class A2C_Cartpole():
-    def __init__(self,action_space,observation_space, n_latent_var, K_epochs):
+class A2CAgent():
+    def __init__(
+        self,
+        action_space,
+        observation_space,
+        n_latent_var,
+        K_epochs,
+        gamma,
+        network_save_name = None,
+        network_load_name = None
+    ):
+
+        self.network_save_name = network_save_name
+        self.network_load_name = network_load_name
+        
         self.state_space = observation_space.shape[0]
         self.action_space = action_space
         self.n_latent_var = n_latent_var
         self.K_epochs = K_epochs
-        print(action_space)
+        self.gamma = gamma
         self.memory = Memory()
         self.loss = 0
-        #self.shape = (7, 2)
+        self.shape = (7, 2)
 
         self.model = ActorCritic(self.state_space, self.action_space, self.n_latent_var)
+        self.model.cuda()
         self.optimizer = optim.Adam(self.model.parameters())
 
+        if self.network_load_name and os.path.exists(self.network_load_name + '.pickle'):
+            save_file = open(self.network_load_name + '.pickle', 'rb')
+            save_file_data = pickle.load(save_file)
+            save_file.close()
+
     def get_action(self, obs):
-        action = np.zeros(num_actions)
-        print(action)
-        # action = chosen_indices.item()
-        chosen_action = self.model.act(obs, self.memory)
+        action = np.zeros(self.shape)
+        chosen_indices = self.model.act(obs, self.memory)
   
         # Unwravel action indices to output to the env
-        #chosen_units = chosen_indices // 12
-        #chosen_nodes = chosen_indices % 11
+        chosen_units = chosen_indices // 12
+        chosen_nodes = chosen_indices % 11
 
-        action[0] = chosen_action
-        #action[:,1] = chosen_nodes
+        action[:,0] = chosen_units.cpu()
+        action[:,1] = chosen_nodes.cpu()
 
         #log_prob = self.model.evaluate(obs, action)
         #print(action)
@@ -63,7 +83,7 @@ class A2C_Cartpole():
       
         # Calculate reward discounts 
         for reward in reversed(self.memory.rewards):
-            discounted_reward = reward + (gamma * discounted_reward)
+            discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
        
         # Normalizing the rewards:
@@ -90,6 +110,24 @@ class A2C_Cartpole():
         self.optimizer.step()
 
         self.memory.clear_memory()
+
+    def save_network(self, episodes):
+        """
+        Saves the network's state dict, epsilon value, and episode count to the specified file.
+        @param episodes The number of episodes that have elapsed since the current training session began
+        """
+        if self.network_save_name:
+            save_file = open(os.getcwd() + self.network_save_name + '.pickle', 'wb')
+            pickle.dump({
+                'model_state_dict': self.model.state_dict(),
+                'n_latent_var': self.n_latent_var,
+                'k_epochs': self.K_epochs,
+                'gamma': self.gamma,
+            }, save_file)
+            save_file.close()
+            print('Saved Network')
+        else:
+            print('Save Failed - Save File Not Specified')
 
 ####################
 #   Memory Class   #
@@ -121,8 +159,8 @@ class ActorCritic(nn.Module):
         self.actor = nn.Sequential(
             nn.Linear(state_dim, n_latent_var),
             nn.Tanh(),
-            #nn.Linear(n_latent_var,n_latent_var),
-            #nn.Tanh(),
+            nn.Linear(n_latent_var,n_latent_var),
+            nn.Tanh(),
             nn.Linear(n_latent_var, action_dim),
             nn.Softmax(dim=-1)
             #nn.Linear(state_dim, 528),
@@ -134,8 +172,8 @@ class ActorCritic(nn.Module):
         self.critic = nn.Sequential(
             nn.Linear(state_dim, n_latent_var),
             nn.Tanh(),
-            #nn.Linear(n_latent_var,n_latent_var),
-            #nn.Tanh(),
+            nn.Linear(n_latent_var,n_latent_var),
+            nn.Tanh(),
             nn.Linear(n_latent_var, 1)
             #nn.Linear(state_dim, 528),
             #nn.Linear(528, 1)
@@ -146,25 +184,25 @@ class ActorCritic(nn.Module):
         raise NotImplementedError
 
     def act(self, state, memory):
-        state = torch.from_numpy(state)
-        action_probs = self.actor(state.float())
+        state = torch.from_numpy(state).float().to(device)
+        action_probs = self.actor(state)
 
         # Uses Boltzmann style exploration by sampling from distribution
         dist = Categorical(action_probs)
         
         # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
         # Enables us to grab non-duplicate actions faster
-        action_indices = torch.multinomial(action_probs,num_actions,replacement=False) #do once
+        action_indices = torch.multinomial(action_probs,7,replacement=False).to(device)
 
-        #for i in range(7):
-        memory.logprobs.append(dist.log_prob(action_indices))
-        memory.states.append(state)
-        memory.actions.append(action_indices)
+        for i in range(7):
+            memory.logprobs.append(dist.log_prob(action_indices[i]))
+            memory.states.append(state)
+            memory.actions.append(action_indices[i])
 
         return action_indices
 
     def evaluate(self, state, action):
-        action_probs = self.actor(state.float())
+        action_probs = self.actor(state)
 
         # Use same distribution as act
         dist = Categorical(action_probs)
@@ -178,4 +216,4 @@ class ActorCritic(nn.Module):
         # Get expected network output
         state_value = self.critic(state)
 
-        return action_logprobs, torch.squeeze(state_value), dist_entropy
+        return action_logprobs, torch.squeeze(state_value).to(device), dist_entropy

@@ -1,19 +1,24 @@
 ## Static Imports
 import os
+import sys
+sys.path.insert(0, '.')
 import importlib
 import gym
 import gym_everglades
 import pdb
-import sys
 import matplotlib.pyplot as plt
 from collections import deque 
 
 import numpy as np
 
-import utils.reward_shaping as reward_shaping
-
+try:
+    import utils.reward_shaping as reward_shaping
+except ImportError:
+    import .utils.reward_shaping as reward_shaping
+    
 from everglades_server import server
-from agents.A2C_Loop_Fix.A2C_Loop_Fix import A2C_Loop_Fix
+from agents.A2CAgent.A2CAgent import A2CAgent
+from agents.State_Machine.random_actions import random_actions
 from agents.State_Machine.random_actions_delay import random_actions_delay
 
 #from everglades-server import generate_map
@@ -52,10 +57,18 @@ names = {}
 #################
 # Setup agents  #
 #################
-players[0] = A2C_Loop_Fix(132, env.observation_space, 128, 4)
-names[0] = "DQN Agent"
-players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent Delay'
+players[0] = A2CAgent(
+    action_space=132,
+    observation_space=env.observation_space,
+    n_latent_var=128,
+    K_epochs=4,
+    gamma=0.999,
+    network_save_name = '/agents/A2CAgent/saved_models/A2C_test_1',
+    network_load_name = None
+)
+names[0] = "A2C Agent"
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+names[1] = 'Random Agent'
 #################
 
 actions = {}
@@ -68,7 +81,7 @@ n_episodes = 2000
 # Statistic variables   #
 #########################
 scores = []
-k = 100
+k = 50
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0

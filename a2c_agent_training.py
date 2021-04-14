@@ -11,9 +11,11 @@ from collections import deque
 import numpy as np
 
 import utils.reward_shaping as reward_shaping
+from utils.Statistics import AgentStatistics
 
 from everglades_server import server
-from agents.A2C_Loop_Fix.A2C_Loop_Fix import A2C_Loop_Fix
+from agents.A2CAgent.A2CAgent import A2CAgent
+from agents.State_Machine.random_actions import random_actions
 from agents.State_Machine.random_actions_delay import random_actions_delay
 
 #from everglades-server import generate_map
@@ -49,26 +51,41 @@ env = gym.make('everglades-v0')
 players = {}
 names = {}
 
+## Constants
+
+RENDER_CHARTS = False
+
 #################
 # Setup agents  #
 #################
-players[0] = A2C_Loop_Fix(132, env.observation_space, 128, 4)
-names[0] = "DQN Agent"
-players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent Delay'
+players[0] = A2CAgent(
+    action_space=132,
+    observation_space=env.observation_space,
+    n_latent_var=128,
+    K_epochs=4,
+    gamma=0.999,
+    network_save_name = '/agents/A2CAgent/saved_models/A2C_test_1',
+    network_load_name = None
+)
+names[0] = "A2C Agent"
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
+names[1] = 'Random Agent'
 #################
 
 actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 2000
+n_episodes = 20
 
 #########################
 # Statistic variables   #
 #########################
+k = 5 # Used for average win rates
+p = 1 # Print episodic results every p episodes
+stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + "/saved-stats/A2C_test_1")
+
 scores = []
-k = 100
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 short_term_scores = [0.5] # Average win rates per k episodes
 ties = 0
@@ -105,7 +122,7 @@ for i_episode in range(1, n_episodes+1):
     # Reset the reward average
     average_reward = 0
     while not done:
-        if i_episode % 100 == 0:
+        if i_episode % 5 == 0:
             try:
                 env.render()
             except:
@@ -132,7 +149,7 @@ for i_episode in range(1, n_episodes+1):
         
         # Reward short games
         if done:
-            reward[0] = reward_shaping.reward_short_games(1, reward, done, turn_num)
+            reward[0] = reward_shaping.reward_short_games(0, reward, done, turn_num)
          
         #if done:
         #    if reward[0] > reward[1]:
@@ -188,12 +205,14 @@ for i_episode in range(1, n_episodes+1):
     #################################
     # Print current run statistics  #
     #################################
-    # print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Reward: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,average_reward), end="")
-    if i_episode % k == 0:
+    if i_episode % p == 0:
         print('\rEpisode: {}\tCurrent WR: {:.2f}\tWins: {}\tLosses: {} Ties: {} Eps/Temp: {:.2f} Loss: {:.2f} Average Reward: {:.2f}\n'.format(i_episode,current_wr,score,losses,ties,current_eps, current_loss,average_reward), end="")
-        #print('\rEpisode {}\tAverage Score {:.2f}'.format(i_episode,np.mean(short_term_wr)))
-        short_term_scores.append(np.mean(short_term_wr))
-        short_term_wr = np.zeros((k,), dtype=int)   
+    if i_episode % k == 0:
+        print('\rEpisode {}\tAverage WR {:.2f}'.format(i_episode,np.mean(short_term_wr)))
+        stats.short_term_scores.append(np.mean(short_term_wr))
+        short_term_wr = np.zeros((k,), dtype=int)
+        stats.save_stats()
+  
     ################################
     try:
         env.close()
@@ -203,7 +222,17 @@ for i_episode in range(1, n_episodes+1):
     #   End Training Loop   #
     #########################
 
+# Save final network
+players[0].save_network(i_episode)
 
+# Save run stats
+stats.save_stats()
+
+# Render charts to show visual of training stats
+if RENDER_CHARTS:
+    render_charts(stats)
+
+'''
 #####################
 # Plot final charts #
 #####################
@@ -278,3 +307,4 @@ for ax in [par3, par4]:
 #########################
 
 #########
+'''
