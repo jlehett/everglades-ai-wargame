@@ -91,9 +91,9 @@ class A2CAgent():
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
-        states = torch.stack(self.memory.states).to(device).detach()
-        actions = torch.stack(self.memory.actions).to(device).detach()
-        logprobs = torch.stack(self.memory.logprobs).to(device).detach()
+        states = torch.stack(self.memory.states).to(device).detach().to(device)
+        actions = torch.stack(self.memory.actions).to(device).detach().to(device)
+        logprobs = torch.stack(self.memory.logprobs).to(device).detach().to(device)
         
         for _ in range(self.K_epochs):
             logprobs, state_values, dist_entropy = self.model.evaluate(states, actions)
