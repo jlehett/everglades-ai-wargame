@@ -62,7 +62,7 @@ names = {}
 #   PPO Constants   #
 #####################
 N_LATENT_VAR = 248
-LR = 0.000001
+LR = 0.00001
 K_EPOCHS = 4
 GAMMA = 0.99
 BETAS = (0.9,0.999)
@@ -71,6 +71,7 @@ ACTION_DIM = 132
 OBSERVATION_DIM = 105
 UPDATE_TIMESTEP = 2000
 LAMBD = 0.95
+LR_DECAY = 0.999
 NETWORK_SAVE_NAME = "/agents/PPO/saved_models/rppo_newton_v2"
 SAVE_AFTER_EPISODE = 100
 USE_RECURRENT = True
@@ -175,7 +176,7 @@ for i_episode in range(1, n_episodes+1):
 
         # Handle end of game updates
         if done:
-            players[0].end_of_episode(i_episode)
+            players[0].end_of_episode(i_episode, np.mean(short_term_wr))
 
         # Updates agent after UPDATE_TIMESTEP number of steps
         if timestep % UPDATE_TIMESTEP == 0:
