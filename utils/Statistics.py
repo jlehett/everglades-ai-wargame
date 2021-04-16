@@ -92,7 +92,7 @@ class AgentStatistics:
         self.network_loss       = save_file_data['loss']
 
         # PPO specific stats
-        if self.agent_name == 'PPO':
+        if self.agent_name == 'R/PPO Agent':
             self.actor_loss         = save_file_data['actor_loss']
             self.critic_loss        = save_file_data['critic_loss']
         

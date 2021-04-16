@@ -40,6 +40,14 @@ def render_charts(stats):
     par2.set_ylabel('Loss')
     par2.yaxis.label.set_color('red')
     ax2.plot(np.arange(0, stats.n_episodes+1, stats.k),stats.short_term_scores)
+
+    # Create a Line of Best Fit
+    x = np.arange(1, stats.n_episodes+1, stats.k)
+    y = stats.short_term_scores[1:]
+    m, b = np.polyfit(x, y, 1)
+
+    ax2.plot(x, m*x + b)
+
     ax2.set_ylabel('Average Scores')
     ax2.yaxis.label.set_color('blue')
     ax2.set_xlabel('Episode #')
