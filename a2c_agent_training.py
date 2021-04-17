@@ -15,6 +15,7 @@ from utils.Statistics import AgentStatistics
 
 from everglades_server import server
 from agents.A2CAgent.A2CAgent import A2CAgent
+from agents.A2CAgent.render_A2C import render_charts
 from agents.State_Machine.random_actions import random_actions
 from agents.State_Machine.random_actions_delay import random_actions_delay
 
@@ -52,8 +53,7 @@ players = {}
 names = {}
 
 ## Constants
-
-RENDER_CHARTS = False
+RENDER_CHARTS = True
 
 #################
 # Setup agents  #
@@ -64,7 +64,7 @@ players[0] = A2CAgent(
     n_latent_var=128,
     K_epochs=4,
     gamma=0.999,
-    network_save_name = '/agents/A2CAgent/saved_models/A2C_test_1',
+    network_save_name = '/agents/A2CAgent/saved_models/A2C_test_2',
     network_load_name = None
 )
 names[0] = "A2C Agent"
@@ -76,14 +76,14 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 20
+n_episodes = 2500
 
 #########################
 # Statistic variables   #
 #########################
-k = 5 # Used for average win rates
-p = 1 # Print episodic results every p episodes
-stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + "/saved-stats/A2C_test_1")
+k = 50 # Used for average win rates
+p = 5 # Print episodic results every p episodes
+stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + "/saved-stats/A2C_test_2_stats")
 
 scores = []
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
@@ -122,7 +122,7 @@ for i_episode in range(1, n_episodes+1):
     # Reset the reward average
     average_reward = 0
     while not done:
-        if i_episode % 5 == 0:
+        if i_episode % 100 == 0:
             try:
                 env.render()
             except:
@@ -195,9 +195,11 @@ for i_episode in range(1, n_episodes+1):
     # Update Score statistics for final chart   #
     #############################################
     scores.append(score / i_episode) ## save the most recent score
+    stats.scores.append(score / i_episode)
     current_wr = score / i_episode
     epsilonVals.append(current_eps)
     lossVals.append(current_loss)
+    stats.network_loss.append(current_loss)
     average_reward /= 150 # average reward accross the 150 turns
     avgRewardVals.append(average_reward)
     #############################################
