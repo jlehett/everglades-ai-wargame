@@ -28,6 +28,7 @@ def render_charts(stats):
     par1.plot(np.arange(1,stats.n_episodes+1),stats.network_loss,color="red",alpha=0.5)
     par1.set_ylabel('Loss')
     par1.yaxis.label.set_color('red')
+    par1.set_ylim([-40, 40])
     #######################
 
     ##################################
@@ -37,6 +38,7 @@ def render_charts(stats):
     par2.set_ylabel('Loss')
     par2.yaxis.label.set_color('red')
     ax2.plot(np.arange(0, stats.n_episodes+1, stats.k),stats.short_term_scores)
+    par2.set_ylim([-40, 40])
 
     # Create a Line of Best Fit
     x = np.arange(1, stats.n_episodes+1, stats.k)
