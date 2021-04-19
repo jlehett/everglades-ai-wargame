@@ -4,6 +4,7 @@ import os
 from utils.Agent_Loader.Saved_Agent_Types.smart_state_fixed_fc1 import SmartStateFixedFC1
 from utils.Agent_Loader.Saved_Agent_Types.smart_state_fixed_fc2 import SmartStateFixedFC2
 from utils.Agent_Loader.Saved_Agent_Types.PPO import PPO
+from utils.Agent_Loader.Saved_Agent_Types.A2C import A2C
 
 class AgentLoader:
     """
@@ -28,7 +29,8 @@ class AgentLoader:
         agent_class_mapping = {
             'Smart State Fixed 1 Hidden Layer': SmartStateFixedFC1,
             'Smart State Fixed 2 Hidden Layers': SmartStateFixedFC2,
-            'PPO': PPO
+            'PPO': PPO,
+            'A2C': A2C,
         }
 
         # If the save file does not exist, return early; nothing can be done

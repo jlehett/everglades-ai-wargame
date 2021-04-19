@@ -54,7 +54,7 @@ players[0] = DQNAgent(
     player_num=0,
     map_name=map_name,
     train=TRAIN,
-    network_save_name='./agents/Smart_State/saved_models/newton',
+    network_save_name='./agents/Smart_State/saved_models/local',
     network_load_name=None,
 )
 names[0] = "DQN Agent"
@@ -66,13 +66,13 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 20000
+n_episodes = 2500
 
 #########################
 # Statistic variables   #
 #########################
 k = 100
-stats = AgentStatistics(names[0], n_episodes, k, save_file='./saved-stats/smart_state_newton')
+stats = AgentStatistics(names[0], n_episodes, k, save_file='/saved-stats/local')
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
 
 ties = 0

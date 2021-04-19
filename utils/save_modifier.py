@@ -33,11 +33,11 @@ def modifySaveFile(save_file_path, modifications):
 # Logic to run if this file itself is run
 if __name__ == '__main__':
     # Variables to modify to use the script
-    SAVE_FILE_PATH='saved-agents/smart_state_newton'
+    SAVE_FILE_PATH='saved-agents/A2C_test_3'
     PROPERTY_MODIFICATIONS = {
-        'type': 'Smart State Fixed 2 Hidden Layers',
-        'description': 'Smart State with 2 hidden layers of size 80. Trained in Newton.',
-        'reward type': 'Reward Short Games',
+        'type': 'A2C',
+        'description': 'An A2C model.',
+        'reward type': '???',
         'keys to display': ['type', 'description',  'reward type', 'episodes', 'fc1_size', 'fc2_size', 'batch_size', 'target_update', 'memory_size', 'gamma', 'n_step'],
     }
     
