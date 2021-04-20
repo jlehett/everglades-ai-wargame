@@ -33,7 +33,7 @@ class A2CAgent():
         n_latent_var,
         K_epochs,
         gamma,
-        network_save_name = '/agents/A2CAgent/saved_models/A2C_test_3',
+        network_save_name = '/agents/A2CAgent/saved_models/A2C_test_delayed',
         network_load_name = None
     ):
 

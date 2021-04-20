@@ -64,26 +64,26 @@ players[0] = A2CAgent(
     n_latent_var=128,
     K_epochs=4,
     gamma=0.999,
-    network_save_name = '/agents/A2CAgent/saved_models/A2C_test_3',
+    network_save_name = '/agents/A2CAgent/saved_models/A2C_test_delayed',
     network_load_name = None
 )
 names[0] = "A2C Agent"
-players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
-names[1] = 'Random Agent'
+players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
+names[1] = 'Random Agent Delay'
 #################
 
 actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 30
+n_episodes = 2500
 
 #########################
 # Statistic variables   #
 #########################
-k = 5 # Used for average win rates
-p = 1 # Print episodic results every p episodes
-stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + "/saved-stats/A2C_test_3_stats")
+k = 50 # Used for average win rates
+p = 5 # Print episodic results every p episodes
+stats = AgentStatistics(names[0], n_episodes, k, save_file= os.getcwd() + "/saved-stats/A2C_test_delayed_stats")
 
 scores = []
 short_term_wr = np.zeros((k,), dtype=int) # Used to average win rates
