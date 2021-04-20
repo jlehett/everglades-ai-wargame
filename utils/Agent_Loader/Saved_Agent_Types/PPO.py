@@ -26,17 +26,18 @@ class PPO():
         @param map_name The name of the everglades map
         """
         # Store the save file data
-        self.save_file_data = save_file_data
+        #self.save_file_data = save_file_data
 
         # Load the saved policy net
-        self.policy = ActorCritic(INPUT_SIZE, OUTPUT_SIZE, save_file_data['n_latent_var'], torch.device('cpu'), save_file_data['use_recurrent'])
+        self.policy = ActorCritic(INPUT_SIZE, OUTPUT_SIZE, save_file_data['n_latent_var'], torch.device('cpu'), save_file_data['use_recurrent']).to(torch.device('cpu'))
         self.policy.load_state_dict(save_file_data['policy_state_dict'])
+        self.policy.eval()
 
         # Final action shape
         self.shape = (7,2)
 
         # Set up the hidden states for recurrent
-        self.hidden = torch.zeros(self.save_file_data['n_latent_var']).unsqueeze(0).unsqueeze(0)
+        self.hidden = torch.zeros(1, 1, save_file_data['n_latent_var']).to(torch.device('cpu'))
 
     def get_action(self, obs):
         """
@@ -46,7 +47,9 @@ class PPO():
         @param hidden: The previous hidden state of the agent's GRU
         """
         action = np.zeros(self.shape)
-        chosen_indices, self.hidden = self.policy.act(state=obs, hidden=self.hidden)
+
+        # Must detach the hidden states before passing or it will cause memory leak
+        chosen_indices, self.hidden = self.policy.act(state=obs, hidden=self.hidden.detach())
 
         # Unwravel action indices to output to the env
         chosen_units = chosen_indices // 12

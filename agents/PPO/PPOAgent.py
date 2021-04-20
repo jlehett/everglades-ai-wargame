@@ -93,7 +93,7 @@ class PPOAgent:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         # Set up the hidden states
-        self.hidden = torch.zeros(self.n_latent_var).unsqueeze(0).unsqueeze(0)
+        self.hidden = torch.zeros(1, 1, self.n_latent_var).to(device)
         
         # Set up the log variables to be grabbed by the training file
         self.loss = 0
@@ -113,6 +113,10 @@ class PPOAgent:
         @param hidden: The previous hidden state of the agent's GRU
         """
         action = np.zeros(self.shape)
+
+        # Place the previous hidden state in the memory
+        self.memory.hiddens.append(self.hidden)
+
         chosen_indices, self.hidden = self.policy_old.act(observation,self.memory, self.hidden)
 
         # Unwravel action indices to output to the env
@@ -153,22 +157,32 @@ class PPOAgent:
         old_logprobs = torch.stack(self.memory.logprobs).to(device).detach()
         mask = torch.stack(self.memory.is_terminals).to(device).detach()
         reward = torch.from_numpy(np.asarray(self.memory.rewards)).to(device).detach()
+        hidden = torch.stack(self.memory.hiddens).to(device).detach()
         
         # Set the hidden states
-        hidden = torch.zeros(old_states.size(0),self.n_latent_var).unsqueeze(0).to(device)
+        hidden = hidden.reshape(1, hidden.size(0), hidden.size(3))
+        #hidden = torch.zeros(old_states.size(0) // 7,self.n_latent_var).unsqueeze(0).to(device)
 
         # Calculate values for Generalized Advantage Estimation
         _,values,_ = self.policy.evaluate(old_states, old_actions, hidden)
         values = values.detach()
 
         # Calculate the Advantage
-        rewards = self.calc_gae(reward, values, mask)
+        advantages, returns = self.calc_gae(reward, values, mask)
 
         # Calculate the losses
-        self.calc_losses(old_states, old_actions, old_logprobs, rewards, hidden)
+        self.calc_losses(old_states, old_actions, old_logprobs, advantages, returns, hidden)
 
         # Reset the hidden states
-        self.hidden = torch.zeros(self.n_latent_var).unsqueeze(0).unsqueeze(0)
+        self.hidden = torch.zeros(self.n_latent_var).unsqueeze(0).unsqueeze(0).to(device)
+
+        # Decay the learning rate until it reaches 1e-7
+        #if self.lr > 1e-7:
+        #    self.lr *= 0.999
+
+        #    # Update the lr manually without losing other state information in the optimizer
+        #    for param_group in self.optimizer.param_groups:
+        #        param_group['lr'] = self.lr
 
         # Copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
@@ -180,6 +194,9 @@ class PPOAgent:
         @param reward The batch reward tensor from the agent's memory
         @param values The calculated values from the critic network
         @param mask The batch of mask state values (1 if not done, 0 otherwise)
+
+        @returns adv - the calculated Generalized Advantage
+        @returns rewards - the calculated returns (for the critic loss)
         """
 
         rewards = []
@@ -195,12 +212,12 @@ class PPOAgent:
             ### End Generalized Advantage Estimation ###
 
         # Normalizing the rewards:
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device) - values[:]
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+        adv = torch.tensor(rewards, dtype=torch.float32).to(device) - values[:]
+        adv = (adv - adv.mean()) / (adv.std() + 1e-5)
 
-        return rewards
+        return adv, rewards
 
-    def calc_losses(self, old_states, old_actions, old_logprobs, rewards, hidden):
+    def calc_losses(self, old_states, old_actions, old_logprobs, advantages, returns, hidden):
         """
         Calculates the Actor, Critic and Total losses for RPPO and takes an optimization step for K_Epochs
 
@@ -221,14 +238,15 @@ class PPOAgent:
             ratios = torch.exp(logprobs - old_logprobs.detach())
 
             # Finding surrogate loss:
-            advantages = rewards
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
             # Calculate the losses
             actor_loss = torch.min(surr1, surr2)
-            critic_loss = self.MSE(state_values, rewards) * 0.5
-            entropy = 0.01*dist_entropy
+
+            returns = torch.tensor(returns, dtype=torch.float32).to(device)
+            critic_loss = self.MSE(returns, state_values) * 0.5
+            entropy = 0.0001*dist_entropy
             loss = -actor_loss + critic_loss - entropy
 
             # Take gradient step
@@ -266,14 +284,6 @@ class PPOAgent:
         # Handle end of episode while training
         if episode % self.save_after_episode == 0:
             self.save_network(episode)
-        
-        # Decay the learning rate if new k_wr is less than historic k_wr
-        if episode % self.save_after_episode == 0 and k_wr <= self.k_wr:
-            self.lr = self.lr / 2
-            self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr, betas=self.betas)
-            print('Average Win Rate Did Not Improve. Reducing LR to {}'.format(self.lr))
-        
-        self.k_wr = k_wr
         
     
     def save_network(self, episodes):

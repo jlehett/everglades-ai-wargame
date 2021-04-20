@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 from torch.distributions import Categorical
+import gc
 
 ##########################
 #   Actor Critic Class   #
@@ -80,28 +81,41 @@ class ActorCritic(nn.Module):
         if self.use_recurrent:
             # Convert action_probs to proper size for GRU
             action_probs = action_probs.unsqueeze(0).unsqueeze(0)
+
+            # Repeat the obs for all seven actions to get from network
+            action_probs = action_probs.repeat(7,1,1)
+
             action_probs,hidden = self.action_gru(action_probs, hidden)
 
         action_probs = self.action_layer(action_probs)
 
         # Resize final action_probs after using recurrent architecture
         if self.use_recurrent:
-            action_probs = action_probs[0][0]
-
-        # Uses Boltzmann style exploration by sampling from distribution
-        dist = Categorical(action_probs)
-
-        # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
-        # Enables us to grab non-duplicate actions faster
-        action_indices = torch.multinomial(action_probs,7,replacement=False)
-
-        # Append each action along with its log_prob and the current state separately
-        # Makes the loss function more manageable
-        if not memory == None:
+            # Get each action from each sequence output from the network
+            action_indices = torch.empty(7).to(self.device)
             for i in range(7):
-                memory.logprobs.append(dist.log_prob(action_indices[i]))
-                memory.states.append(state)
-                memory.actions.append(action_indices[i])
+                dist = Categorical(action_probs[i][0])
+                action_indices[i] = dist.sample()
+
+                if not memory == None:
+                    memory.logprobs.append(dist.log_prob(action_indices[i]))
+                    memory.states.append(state)
+                    memory.actions.append(action_indices[i])
+        else:
+            # Uses Boltzmann style exploration by sampling from distribution
+            dist = Categorical(action_probs)
+
+            # Multinomial uses the same distribution as Categorical but allows for sampling without replacement
+            # Enables us to grab non-duplicate actions faster
+            action_indices = torch.multinomial(action_probs,7,replacement=False)
+
+            # Append each action along with its log_prob and the current state separately
+            # Makes the loss function more manageable
+            if not memory == None:
+                for i in range(7):
+                    memory.logprobs.append(dist.log_prob(action_indices[i]))
+                    memory.states.append(state)
+                    memory.actions.append(action_indices[i])
 
         return action_indices, hidden
 
@@ -125,22 +139,36 @@ class ActorCritic(nn.Module):
         if self.use_recurrent:
             # Convert action_probs to proper size for GRU
             action_probs = action_probs.unsqueeze(0)
+
+            # Repeat the obs for all seven actions to get from network
+            action_probs = torch.reshape(action_probs, (7,action_probs.size(1) // 7,self.n_latent_var))
+
             action_probs,hidden = self.action_gru(action_probs, hidden)
         
         action_probs = self.action_layer(action_probs)
 
         # Resize action_probs after using recurrent architecture
         if self.use_recurrent:
-            action_probs = action_probs[0]
+            # Use same distribution as act
+            dist = Categorical(action_probs)
 
-        # Use same distribution as act
-        dist = Categorical(action_probs)
+            # Calculate the expected log_probs for the previous actions
+            action = action.reshape(7, action.size(0) // 7)
+            action_logprobs = dist.log_prob(action)
+            action_logprobs = action_logprobs.reshape(action_logprobs.size(1) * 7)
 
-        # Calculate the expected log_probs for the previous actions
-        action_logprobs = dist.log_prob(action)
+            # Calculate the entropy from the distribution
+            dist_entropy = dist.entropy()
+            dist_entropy = dist_entropy.reshape(dist_entropy.size(1) * 7)
+        else:
+            # Use same distribution as act
+            dist = Categorical(action_probs)
 
-        # Calculate the entropy from the distribution
-        dist_entropy = dist.entropy()
+            # Calculate the expected log_probs for the previous actions
+            action_logprobs = dist.log_prob(action)
+
+            # Calculate the entropy from the distribution
+            dist_entropy = dist.entropy()
 
         # Query the critic / Get expected network output
         state_value = self.value_head(state)
@@ -149,12 +177,16 @@ class ActorCritic(nn.Module):
         if self.use_recurrent:
             # Convert state_value to proper size for GRU
             state_value = state_value.unsqueeze(0)
+
+            # Repeat the obs for all seven actions to get from network
+            state_value = torch.reshape(state_value, (7,state_value.size(1) // 7,self.n_latent_var))
+
             state_value,_ = self.value_gru(state_value,hidden)
 
         state_value = self.value_layer(state_value)
 
         # Resize state_value after using recurrent architecture
         if self.use_recurrent:
-            state_value = state_value[0]
+            state_value = state_value.reshape(state_value.size(1) * 7)
 
-        return action_logprobs, torch.squeeze(state_value), dist_entropy
+        return action_logprobs, state_value, dist_entropy
