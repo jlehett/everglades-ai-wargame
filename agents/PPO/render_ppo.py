@@ -25,10 +25,10 @@ def render_charts(stats):
     #   Cumulative Plot  #
     ######################
     fig.suptitle('Scores')
-    ax1.plot(np.arange(1, stats.n_episodes+1),stats.scores)
+    ax1.plot(np.arange(1, len(stats.scores)+1),stats.scores)
     ax1.set_ylabel('Cumulative Scores')
     ax1.yaxis.label.set_color('blue')
-    par1.plot(np.arange(1,stats.n_episodes+1),stats.network_loss,color="red",alpha=0.5)
+    par1.plot(np.arange(1,len(stats.scores)+1),stats.network_loss,color="red",alpha=0.3)
     par1.set_ylabel('Loss')
     par1.yaxis.label.set_color('red')
     #######################
@@ -36,13 +36,13 @@ def render_charts(stats):
     ##################################
     #   Average Per K Episodes Plot  #
     ##################################
-    par2.plot(np.arange(1,stats.n_episodes+1),stats.network_loss,color="red",alpha=0.5)
+    par2.plot(np.arange(1,len(stats.scores)+1),stats.network_loss,color="red",alpha=0.3)
     par2.set_ylabel('Loss')
     par2.yaxis.label.set_color('red')
-    ax2.plot(np.arange(0, stats.n_episodes+1, stats.k),stats.short_term_scores)
+    ax2.plot(np.arange(0, len(stats.scores)+1, stats.k),stats.short_term_scores)
 
     # Create a Line of Best Fit
-    x = np.arange(1, stats.n_episodes+1, stats.k)
+    x = np.arange(1, len(stats.scores)+1, stats.k)
     y = stats.short_term_scores[1:]
     m, b = np.polyfit(x, y, 1)
 
@@ -56,22 +56,21 @@ def render_charts(stats):
     ##################################
     #   Actor Loss Plot              #
     ##################################
-    par3.plot(np.arange(1,stats.n_episodes+1),stats.network_loss,color="red",alpha=0.5)
+    par3.plot(np.arange(1,len(stats.scores)+1),stats.network_loss,color="red",alpha=0.5)
     par3.set_ylabel('Loss')
     par3.yaxis.label.set_color('red')
-    ax3.plot(np.arange(1, stats.n_episodes+1),stats.actor_loss)
+    ax3.plot(np.arange(1, len(stats.scores)+1),stats.actor_loss)
     ax3.set_ylabel('Actor Loss')
     ax3.yaxis.label.set_color('blue')
-    ax3.set_xlabel('Episode #')
     ##################################
 
     ##################################
     #   Critic Loss Plot             #
     ##################################
-    par4.plot(np.arange(1,stats.n_episodes+1),stats.network_loss,color="red",alpha=0.5)
+    par4.plot(np.arange(1,len(stats.scores)+1),stats.network_loss,color="red",alpha=0.5)
     par4.set_ylabel('Loss')
     par4.yaxis.label.set_color('red')
-    ax4.plot(np.arange(1, stats.n_episodes+1),stats.critic_loss)
+    ax4.plot(np.arange(1, len(stats.scores)+1),stats.critic_loss)
     ax4.set_ylabel('Critic Loss')
     ax4.yaxis.label.set_color('blue')
     ax4.set_xlabel('Episode #')

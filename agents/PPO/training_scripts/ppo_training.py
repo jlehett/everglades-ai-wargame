@@ -62,20 +62,20 @@ names = {}
 #   PPO Constants   #
 #####################
 N_LATENT_VAR = 248
-LR = 0.0001
-K_EPOCHS = 8
+LR = 1e-4
+K_EPOCHS = 4
 GAMMA = 0.99
 BETAS = (0.9,0.999)
 EPS_CLIP = 0.2
 ACTION_DIM = 132
 OBSERVATION_DIM = 105
-UPDATE_TIMESTEP = 2000
+UPDATE_TIMESTEP = 300
 LAMBD = 0.95
-NETWORK_SAVE_NAME = "./agents/PPO/saved_models/rppo_newton_v1"
+NETWORK_SAVE_NAME = "./agents/PPO/saved_models/rppo_newton_v14"
 SAVE_AFTER_EPISODE = 100
 USE_RECURRENT = True
 TRAIN = True
-DEVICE = "GPU"
+DEVICE = "CPU"
 #################
 
 #################
@@ -97,7 +97,7 @@ players[0] = PPOAgent(OBSERVATION_DIM,
                 SAVE_AFTER_EPISODE,
                 NETWORK_SAVE_NAME)
 names[0] = 'R/PPO Agent'
-players[1] = random_actions_delay(env.num_actions_per_turn, 1, map_name)
+players[1] = random_actions(env.num_actions_per_turn, 1, map_name)
 names[1] = 'Random Agent'
 #################
 
@@ -105,17 +105,17 @@ actions = {}
 
 ## Set high episode to test convergence
 # Change back to resonable setting for other testing
-n_episodes = 50000
-RENDER_CHARTS = False # Determines if final charts should be rendered
+n_episodes = 2500
+RENDER_CHARTS = True # Determines if final charts should be rendered
 timestep = 0
 
 #########################
 # Statistic variables   #
 #########################
-k = 50 #The set number of episodes to show win rates for
+k = 100 #The set number of episodes to show win rates for
 
 # The Stats class (for saving statistics)
-stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v1")
+stats = AgentStatistics(names[0], n_episodes, k, save_file="/saved-stats/rppo_newton_v14")
 
 # General stats
 score = 0
